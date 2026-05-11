@@ -6,7 +6,7 @@ const cors = require('cors')
 const fs = require('fs')
 
 const app = express()
-const port = 5000
+const port = process.env.PORT || 5000
 
 // 跨域配置
 app.use(cors({origin:true,credentials:true}))
@@ -28,12 +28,22 @@ db.connect()
   .then(() => console.log('✅ 数据库连接成功 - app.js'))
   .catch(err => console.log('数据库连接失败 - app.js', err))
 
+// 捕获连接池错误，防止进程崩溃
+db.on('error', (err) => {
+  console.error('数据库连接池错误（已捕获）:', err.message)
+})
+
 // 上传配置
 const storage = multer.diskStorage({
   destination:(req,file,cb)=>cb(null,uploadDir),
   filename:(req,file,cb)=>cb(null,Date.now()+path.extname(file.originalname))
 })
 const upload = multer({storage})
+
+// 根路由健康检查
+app.get('/', (req,res)=>{
+  res.json({code:200,msg:'Server is running'})
+})
 
 // 管理员登录
 app.post('/api/login', async (req,res)=>{
