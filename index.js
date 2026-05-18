@@ -108,10 +108,26 @@ app.post('/api/upload-video', upload.single('video'), async (req, res) => {
   }
 });
 
-// 视频列表（小程序和管理员都用）
+// 全部视频列表
 app.get('/api/all-words', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM videos ORDER BY id DESC');
+    res.json({ code: 200, data: result.rows });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 按分类获取视频（小程序 wordList 页用）
+app.get('/api/words-by-category', async (req, res) => {
+  const { category_id } = req.query;
+  try {
+    let result;
+    if (category_id) {
+      result = await db.query('SELECT * FROM videos WHERE category_id = $1 ORDER BY id DESC', [category_id]);
+    } else {
+      result = await db.query('SELECT * FROM videos ORDER BY id DESC');
+    }
     res.json({ code: 200, data: result.rows });
   } catch (err) {
     res.json({ code: 500, msg: err.message });
