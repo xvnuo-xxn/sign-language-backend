@@ -155,8 +155,8 @@ app.post('/api/feedback/add', async (req, res) => {
   const { type, contact, content } = req.body;
   try {
     await db.query(
-      'INSERT INTO feedback (content, status) VALUES ($1, 0)',
-      [`[${type || '其他'}] ${content}${contact ? ' 联系方式：' + contact : ''}`]
+      'INSERT INTO feedback (type, contact, content, status) VALUES ($1, $2, $3, 0)',
+      [type || '其他', contact || '', content]
     );
     res.json({ code: 200, msg: '提交成功' });
   } catch (err) {

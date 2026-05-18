@@ -63,6 +63,8 @@
     .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; }
     .badge-green { background: #c6f6d5; color: #276749; }
     .badge-gray { background: #e2e8f0; color: #718096; }
+    .badge-red { background: #fed7d7; color: #9b2c2c; }
+    .badge-yellow { background: #fefcbf; color: #744210; }
     .empty { text-align: center; color: #aaa; padding: 40px; }
     .modal-overlay {
       display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -174,8 +176,8 @@
     <div class="page-title">反馈管理</div>
     <div class="card">
       <table>
-        <thead><tr><th>ID</th><th>反馈内容</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
-        <tbody id="feedback-list"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody>
+        <thead><tr><th>ID</th><th>类型</th><th>反馈内容</th><th>联系方式</th><th>状态</th><th>时间</th><th>操作</th></tr></thead>
+        <tbody id="feedback-list"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -320,15 +322,19 @@
       </tr>`).join('');
   }
 
+  const typeColors = { '功能建议': 'badge-green', 'Bug问题': 'badge-red', '使用疑问': 'badge-yellow', '其他': 'badge-gray' };
+
   async function loadFeedback() {
     const res = await fetch('/api/admin/feedback').then(r => r.json());
     const list = res.data || [];
     const tbody = document.getElementById('feedback-list');
-    if (!list.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无反馈</td></tr>'; return; }
+    if (!list.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无反馈</td></tr>'; return; }
     tbody.innerHTML = list.map(f => `
       <tr>
         <td>#${f.id}</td>
-        <td>${f.content || '-'}</td>
+        <td><span class="badge ${typeColors[f.type] || 'badge-gray'}">${f.type || '其他'}</span></td>
+        <td style="max-width:220px;word-break:break-all">${f.content || '-'}</td>
+        <td>${f.contact || '<span style="color:#aaa">未填写</span>'}</td>
         <td><span class="badge ${f.status ? 'badge-green' : 'badge-gray'}">${f.status ? '已处理' : '待处理'}</span></td>
         <td>${f.created_at ? new Date(f.created_at).toLocaleDateString('zh-CN') : '-'}</td>
         <td>${!f.status ? `<button class="btn btn-primary btn-sm" onclick="handleFeedback(${f.id})">标为已处理</button>` : '-'}</td>
