@@ -1,0 +1,85 @@
+const express = require('express');
+const multer = require('multer');
+const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use('/uploads', express.static('uploads'));
+
+// 创建上传目录
+if (!fs.existsSync('uploads/video')) {
+  fs.mkdirSync('uploads/video', { recursive: true });
+}
+
+// 配置文件上传
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/video');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage: storage });
+
+// 用一个临时数组代替数据库（先保证功能能用，后续再换正式数据库）
+let categories = [{ id: 1, name: "测试分类" }];
+let videos = [];
+
+// 测试根路由
+app.get('/', (req, res) => {
+  res.json({ code: 200, msg: "Server is running" });
+});
+
+// 1. 分类接口
+app.get('/api/category/list', (req, res) => {
+  res.json({ code: 200, data: categories });
+});
+
+app.post('/api/category/add', (req, res) => {
+  const { name } = req.body;
+  const newCat = { id: Date.now(), name };
+  categories.push(newCat);
+  res.json({ code: 200, msg: "添加成功" });
+});
+
+app.get('/api/category/del', (req, res) => {
+  const { id } = req.query;
+  categories = categories.filter(c => c.id != id);
+  res.json({ code: 200, msg: "删除成功" });
+});
+
+// 2. 视频上传接口（关键）
+app.post('/api/upload-video', upload.single('video'), (req, res) => {
+  const { category_id, word_name } = req.body;
+  const video_path = 'uploads/video/' + req.file.filename;
+
+  const newVideo = {
+    id: Date.now(),
+    category_id,
+    word_name,
+    video_path
+  };
+  videos.push(newVideo);
+  res.json({ code: 200, msg: "上传成功" });
+});
+
+// 3. 词汇管理接口
+app.get('/api/all-words', (req, res) => {
+  res.json({ code: 200, data: videos });
+});
+
+app.get('/api/video/del', (req, res) => {
+  const { id } = req.query;
+  videos = videos.filter(v => v.id != id);
+  res.json({ code: 200, msg: "删除成功" });
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
