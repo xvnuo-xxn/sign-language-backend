@@ -10,6 +10,9 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
+// 托管管理员前端页面
+app.use(express.static('public'));
+
 // 数据库连接（Replit PostgreSQL）
 const db = new Pool({
   connectionString: process.env.DATABASE_URL
@@ -18,7 +21,6 @@ db.connect()
   .then(() => console.log('✅ 数据库连接成功'))
   .catch(err => console.error('❌ 数据库连接失败:', err.message));
 
-// 捕获连接池错误，防止进程崩溃
 db.on('error', (err) => {
   console.error('数据库连接池错误（已捕获）:', err.message);
 });
@@ -30,19 +32,29 @@ if (!fs.existsSync('uploads/video')) {
 
 // 配置文件上传
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/video');
-  },
-  filename: function (req, file, cb) {
+  destination: (req, file, cb) => cb(null, 'uploads/video'),
+  filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
-// 根路由健康检查
+// 根路由 → 跳转到登录页
 app.get('/', (req, res) => {
-  res.send('服务器正常运行');
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// 管理员登录
+app.post('/api/login', async (req, res) => {
+  const { account, pwd } = req.body;
+  try {
+    const result = await db.query('SELECT * FROM admin WHERE account=$1 AND pwd=$2', [account, pwd]);
+    if (result.rows.length === 0) return res.json({ code: 401, msg: '账号或密码错误' });
+    res.json({ code: 200, msg: '登录成功' });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
 });
 
 // 分类列表
@@ -60,7 +72,7 @@ app.post('/api/category/add', async (req, res) => {
   const { name } = req.body;
   try {
     await db.query('INSERT INTO categories (name) VALUES ($1)', [name]);
-    res.json({ code: 200, msg: '成功' });
+    res.json({ code: 200, msg: '添加成功' });
   } catch (err) {
     res.json({ code: 500, msg: err.message });
   }
@@ -93,7 +105,7 @@ app.post('/api/upload-video', upload.single('video'), async (req, res) => {
   }
 });
 
-// 所有视频
+// 视频列表（小程序和管理员都用）
 app.get('/api/all-words', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM videos ORDER BY id DESC');
@@ -109,6 +121,37 @@ app.get('/api/video/del', async (req, res) => {
   try {
     await db.query('DELETE FROM videos WHERE id = $1', [id]);
     res.json({ code: 200, msg: '删除成功' });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 用户列表
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM users ORDER BY id DESC');
+    res.json({ code: 200, data: result.rows });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 反馈列表
+app.get('/api/admin/feedback', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM feedback ORDER BY id DESC');
+    res.json({ code: 200, data: result.rows });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 处理反馈
+app.get('/api/admin/feedback/deal', async (req, res) => {
+  const { id } = req.query;
+  try {
+    await db.query('UPDATE feedback SET status = 1 WHERE id = $1', [id]);
+    res.json({ code: 200, msg: '已处理' });
   } catch (err) {
     res.json({ code: 500, msg: err.message });
   }
