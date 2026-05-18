@@ -134,6 +134,36 @@ app.get('/api/words-by-category', async (req, res) => {
   }
 });
 
+// 视频列表（兼容旧接口名）
+app.get('/api/video/list', async (req, res) => {
+  const { category_id } = req.query;
+  try {
+    let result;
+    if (category_id) {
+      result = await db.query('SELECT * FROM videos WHERE category_id = $1 ORDER BY id DESC', [category_id]);
+    } else {
+      result = await db.query('SELECT * FROM videos ORDER BY id DESC');
+    }
+    res.json({ code: 200, data: result.rows });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 小程序提交反馈
+app.post('/api/feedback/add', async (req, res) => {
+  const { type, contact, content } = req.body;
+  try {
+    await db.query(
+      'INSERT INTO feedback (content, status) VALUES ($1, 0)',
+      [`[${type || '其他'}] ${content}${contact ? ' 联系方式：' + contact : ''}`]
+    );
+    res.json({ code: 200, msg: '提交成功' });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
 // 删除视频
 app.get('/api/video/del', async (req, res) => {
   const { id } = req.query;
