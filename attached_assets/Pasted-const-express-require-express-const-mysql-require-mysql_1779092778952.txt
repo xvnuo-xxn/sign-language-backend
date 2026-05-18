@@ -1,0 +1,122 @@
+const express = require('express');
+const mysql = require('mysql2');
+const multer = require('multer');
+const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use('/uploads', express.static('uploads'));
+
+// 1. 数据库连接（改成你自己的）
+const db = mysql.createConnection({
+  host: "你的数据库地址",
+  user: "你的数据库用户名",
+  password: "你的数据库密码",
+  database: "你的数据库名"
+});
+
+// 2. 创建上传目录
+if (!fs.existsSync('uploads/video')) {
+  fs.mkdirSync('uploads/video', { recursive: true });
+}
+
+// 3. 配置文件上传
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/video');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage: storage });
+
+// 4. 分类接口
+app.get('/api/category/list', (req, res) => {
+  db.query('SELECT * FROM categories', (err, results) => {
+    if (err) return res.json({ code: 500, msg: err.message });
+    res.json({ code: 200, data: results });
+  });
+});
+
+app.post('/api/category/add', (req, res) => {
+  const { name } = req.body;
+  db.query('INSERT INTO categories (name) VALUES (?)', [name], (err) => {
+    if (err) return res.json({ code: 500, msg: err.message });
+    res.json({ code: 200, msg: '添加成功' });
+  });
+});
+
+app.get('/api/category/del', (req, res) => {
+  const { id } = req.query;
+  db.query('DELETE FROM categories WHERE id = ?', [id], (err) => {
+    if (err) return res.json({ code: 500, msg: err.message });
+    res.json({ code: 200, msg: '删除成功' });
+  });
+});
+
+// 5. 视频上传接口（关键）
+app.post('/api/upload-video', upload.single('video'), (req, res) => {
+  const { category_id, word_name } = req.body;
+  const video_path = 'uploads/video/' + req.file.filename;
+
+  db.query(
+    'INSERT INTO videos (category_id, word_name, video_path) VALUES (?, ?, ?)',
+    [category_id, word_name, video_path],
+    (err) => {
+      if (err) {
+        console.error(err);
+        return res.json({ code: 500, msg: '数据库写入失败' });
+      }
+      res.json({ code: 200, msg: '上传成功' });
+    }
+  );
+});
+
+// 6. 词汇管理接口
+app.get('/api/all-words', (req, res) => {
+  db.query('SELECT * FROM videos', (err, results) => {
+    if (err) return res.json({ code: 500, msg: err.message });
+    res.json({ code: 200, data: results });
+  });
+});
+
+app.get('/api/video/del', (req, res) => {
+  const { id } = req.query;
+  db.query('DELETE FROM videos WHERE id = ?', [id], (err) => {
+    if (err) return res.json({ code: 500, msg: err.message });
+    res.json({ code: 200, msg: '删除成功' });
+  });
+});
+
+// 7. 用户/反馈接口（如果你的小程序有这些表）
+app.get('/api/admin/users', (req, res) => {
+  db.query('SELECT * FROM users', (err, results) => {
+    if (err) return res.json({ code: 500, msg: err.message });
+    res.json({ code: 200, data: results });
+  });
+});
+
+app.get('/api/admin/feedback', (req, res) => {
+  db.query('SELECT * FROM feedback', (err, results) => {
+    if (err) return res.json({ code: 500, msg: err.message });
+    res.json({ code: 200, data: results });
+  });
+});
+
+app.get('/api/admin/feedback/deal', (req, res) => {
+  const { id } = req.query;
+  db.query('UPDATE feedback SET status = 1 WHERE id = ?', [id], (err) => {
+    if (err) return res.json({ code: 500, msg: err.message });
+    res.json({ code: 200, msg: '已处理' });
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
