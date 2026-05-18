@@ -1,85 +1,64 @@
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-
 const app = express();
+
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
 
-// 创建上传目录
-if (!fs.existsSync('uploads/video')) {
-  fs.mkdirSync('uploads/video', { recursive: true });
-}
-
-// 配置文件上传
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/video');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
+const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// 用一个临时数组代替数据库（先保证功能能用，后续再换正式数据库）
-let categories = [{ id: 1, name: "测试分类" }];
+let categories = [];
 let videos = [];
 
-// 测试根路由
 app.get('/', (req, res) => {
-  res.json({ code: 200, msg: "Server is running" });
+  res.send('服务器正常运行');
 });
 
-// 1. 分类接口
+// 分类列表
 app.get('/api/category/list', (req, res) => {
   res.json({ code: 200, data: categories });
 });
 
+// 添加分类
 app.post('/api/category/add', (req, res) => {
-  const { name } = req.body;
-  const newCat = { id: Date.now(), name };
-  categories.push(newCat);
-  res.json({ code: 200, msg: "添加成功" });
+  categories.push({
+    id: Date.now(),
+    name: req.body.name
+  });
+  res.json({ code: 200, msg: "成功" });
 });
 
+// 删除分类
 app.get('/api/category/del', (req, res) => {
-  const { id } = req.query;
-  categories = categories.filter(c => c.id != id);
+  categories = categories.filter(c => c.id != req.query.id);
   res.json({ code: 200, msg: "删除成功" });
 });
 
-// 2. 视频上传接口（关键）
+// 上传视频
 app.post('/api/upload-video', upload.single('video'), (req, res) => {
-  const { category_id, word_name } = req.body;
-  const video_path = 'uploads/video/' + req.file.filename;
-
-  const newVideo = {
+  videos.push({
     id: Date.now(),
-    category_id,
-    word_name,
-    video_path
-  };
-  videos.push(newVideo);
+    category_id: req.body.category_id,
+    word_name: req.body.word_name,
+    video_path: "video.mp4"
+  });
   res.json({ code: 200, msg: "上传成功" });
 });
 
-// 3. 词汇管理接口
+// 所有视频
 app.get('/api/all-words', (req, res) => {
   res.json({ code: 200, data: videos });
 });
 
+// 删除视频
 app.get('/api/video/del', (req, res) => {
-  const { id } = req.query;
-  videos = videos.filter(v => v.id != id);
+  videos = videos.filter(v => v.id != req.query.id);
   res.json({ code: 200, msg: "删除成功" });
 });
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log("✅ 服务器启动成功，端口：" + PORT);
 });
