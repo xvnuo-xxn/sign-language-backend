@@ -222,12 +222,33 @@
     categories = res.data || [];
     const tbody = document.getElementById('cat-list');
     if (!categories.length) { tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无分类</td></tr>'; return; }
-    tbody.innerHTML = categories.map(c => `
-      <tr>
-        <td>#${c.id}</td>
-        <td>${c.name}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="delCategory(${c.id})">删除</button></td>
-      </tr>`).join('');
+
+    const fixed = categories.filter(c => c.is_fixed);
+    const dynamic = categories.filter(c => !c.is_fixed);
+
+    let rows = '';
+    if (fixed.length) {
+      rows += `<tr><td colspan="3" style="background:#f0f4ff;color:#667eea;font-weight:600;font-size:13px;padding:8px 16px;">🔒 固定分类（不可删除）</td></tr>`;
+      rows += fixed.map(c => `
+        <tr>
+          <td>#${c.id}</td>
+          <td>${c.name}</td>
+          <td><span style="color:#aaa;font-size:13px;">系统固定</span></td>
+        </tr>`).join('');
+    }
+    if (dynamic.length) {
+      rows += `<tr><td colspan="3" style="background:#f0fff4;color:#276749;font-weight:600;font-size:13px;padding:8px 16px;">✏️ 自定义分类（可增删）</td></tr>`;
+      rows += dynamic.map(c => `
+        <tr>
+          <td>#${c.id}</td>
+          <td>${c.name}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="delCategory(${c.id})">删除</button></td>
+        </tr>`).join('');
+    }
+    if (!dynamic.length && fixed.length) {
+      rows += `<tr><td colspan="3" class="empty" style="padding:20px">暂无自定义分类，可在上方添加</td></tr>`;
+    }
+    tbody.innerHTML = rows;
 
     const sel = document.getElementById('video-cat');
     if (sel) sel.innerHTML = '<option value="">选择分类</option>' + categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');

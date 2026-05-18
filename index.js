@@ -63,7 +63,9 @@ app.post('/api/login', async (req, res) => {
 // 分类列表
 app.get('/api/category/list', async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM categories ORDER BY id DESC');
+    const result = await db.query(
+      'SELECT * FROM categories ORDER BY is_fixed DESC, id ASC'
+    );
     res.json({ code: 200, data: result.rows });
   } catch (err) {
     res.json({ code: 500, msg: err.message });
@@ -81,10 +83,14 @@ app.post('/api/category/add', async (req, res) => {
   }
 });
 
-// 删除分类
+// 删除分类（固定分类不可删）
 app.get('/api/category/del', async (req, res) => {
   const { id } = req.query;
   try {
+    const check = await db.query('SELECT is_fixed FROM categories WHERE id = $1', [id]);
+    if (check.rows[0]?.is_fixed) {
+      return res.json({ code: 403, msg: '固定分类不可删除' });
+    }
     await db.query('DELETE FROM categories WHERE id = $1', [id]);
     res.json({ code: 200, msg: '删除成功' });
   } catch (err) {
