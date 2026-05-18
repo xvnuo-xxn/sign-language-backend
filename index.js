@@ -38,7 +38,10 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 100 * 1024 * 1024 } // 最大100MB
+});
 
 // 根路由 → 跳转到登录页
 app.get('/', (req, res) => {

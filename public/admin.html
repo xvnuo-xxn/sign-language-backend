@@ -268,20 +268,36 @@
     const word = document.getElementById('video-word').value.trim();
     const file = document.getElementById('video-file').files[0];
     if (!catId || !word || !file) return alert('请填写完整信息并选择视频文件');
+    if (file.size > 100 * 1024 * 1024) return alert('视频文件不能超过 100MB');
+
     const status = document.getElementById('upload-status');
-    status.textContent = '上传中...';
+    status.style.color = '#667eea';
+    status.textContent = '上传中，请稍候...（视频较大可能需要一两分钟）';
+
     const fd = new FormData();
     fd.append('video', file);
     fd.append('category_id', catId);
     fd.append('word_name', word);
-    const res = await fetch('/api/upload-video', { method: 'POST', body: fd }).then(r => r.json());
-    if (res.code === 200) {
-      status.textContent = '✅ 上传成功';
-      document.getElementById('video-word').value = '';
-      document.getElementById('video-file').value = '';
-      loadVideos();
-    } else {
-      status.textContent = '❌ 上传失败：' + res.msg;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 120000); // 2分钟超时
+      const r = await fetch('/api/upload-video', { method: 'POST', body: fd, signal: controller.signal });
+      clearTimeout(timer);
+      const res = await r.json();
+      if (res.code === 200) {
+        status.style.color = '#38a169';
+        status.textContent = '✅ 上传成功！';
+        document.getElementById('video-word').value = '';
+        document.getElementById('video-file').value = '';
+        loadVideos();
+      } else {
+        status.style.color = '#e53e3e';
+        status.textContent = '❌ 上传失败：' + res.msg;
+      }
+    } catch (err) {
+      status.style.color = '#e53e3e';
+      status.textContent = err.name === 'AbortError' ? '❌ 上传超时，请尝试更小的视频文件' : '❌ 网络错误，请检查连接后重试';
     }
   }
 
