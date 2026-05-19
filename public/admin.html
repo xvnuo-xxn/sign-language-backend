@@ -49,12 +49,13 @@
     .btn-primary { background: #667eea; color: white; }
     .btn-danger { background: #fc8181; color: white; }
     .btn-sm { padding: 5px 14px; font-size: 13px; }
-    .input-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .input-row { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
     .input-row input, .input-row select {
       flex: 1; padding: 10px 14px; border: 1px solid #e2e8f0;
       border-radius: 8px; font-size: 14px; outline: none;
     }
     .input-row input:focus, .input-row select:focus { border-color: #667eea; }
+    .input-row label { font-size: 13px; color: #555; white-space: nowrap; min-width: 56px; }
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; padding: 12px 16px; font-size: 13px; color: #888; font-weight: 600; border-bottom: 1px solid #f0f0f0; }
     td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid #f7f7f7; }
@@ -66,16 +67,6 @@
     .badge-red { background: #fed7d7; color: #9b2c2c; }
     .badge-yellow { background: #fefcbf; color: #744210; }
     .empty { text-align: center; color: #aaa; padding: 40px; }
-    .modal-overlay {
-      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center;
-    }
-    .modal-overlay.show { display: flex; }
-    .modal { background: white; border-radius: 12px; padding: 28px; width: 420px; }
-    .modal h3 { margin-bottom: 20px; font-size: 18px; }
-    .modal input, .modal select { width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; margin-bottom: 12px; outline: none; }
-    .modal-btns { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
-    .btn-cancel { background: #eee; color: #555; }
   </style>
 </head>
 <body>
@@ -86,11 +77,10 @@
     <h2>手语学习平台</h2>
     <p>管理中心</p>
   </div>
-  <div class="nav-item active" onclick="showPage('dashboard')"><span class="icon">📊</span> 数据概览</div>
-  <div class="nav-item" onclick="showPage('category')"><span class="icon">📁</span> 分类管理</div>
-  <div class="nav-item" onclick="showPage('video')"><span class="icon">🎬</span> 视频词汇</div>
-  <div class="nav-item" onclick="showPage('user')"><span class="icon">👥</span> 用户管理</div>
-  <div class="nav-item" onclick="showPage('feedback')"><span class="icon">💬</span> 反馈管理</div>
+  <div class="nav-item active" onclick="showPage('dashboard', this)"><span class="icon">📊</span> 数据概览</div>
+  <div class="nav-item" onclick="showPage('video', this)"><span class="icon">🎬</span> 视频词汇</div>
+  <div class="nav-item" onclick="showPage('user', this)"><span class="icon">👥</span> 用户管理</div>
+  <div class="nav-item" onclick="showPage('feedback', this)"><span class="icon">💬</span> 反馈管理</div>
   <div class="nav-logout">
     <div class="nav-item" onclick="logout()"><span class="icon">🚪</span> 退出登录</div>
   </div>
@@ -101,36 +91,16 @@
   <div class="page active" id="page-dashboard">
     <div class="page-title">数据概览</div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="num" id="stat-category">-</div><div class="label">视频分类数</div></div>
       <div class="stat-card"><div class="num" id="stat-video">-</div><div class="label">视频词汇数</div></div>
       <div class="stat-card"><div class="num" id="stat-user">-</div><div class="label">注册用户数</div></div>
+      <div class="stat-card"><div class="num" id="stat-feedback">-</div><div class="label">待处理反馈</div></div>
     </div>
     <div class="card">
       <div class="card-header"><h3>快捷操作</h3></div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;">
-        <button class="btn btn-primary" onclick="showPage('category')">➕ 添加分类</button>
-        <button class="btn btn-primary" onclick="showPage('video')">🎬 上传视频</button>
-        <button class="btn btn-primary" onclick="showPage('feedback')">💬 查看反馈</button>
+        <button class="btn btn-primary" onclick="showPage('video', null)">🎬 上传视频</button>
+        <button class="btn btn-primary" onclick="showPage('feedback', null)">💬 查看反馈</button>
       </div>
-    </div>
-  </div>
-
-  <!-- 分类管理 -->
-  <div class="page" id="page-category">
-    <div class="page-title">分类管理</div>
-    <div class="card">
-      <div class="card-header"><h3>添加分类</h3></div>
-      <div class="input-row">
-        <input type="text" id="cat-name" placeholder="输入分类名称，如：日常用语">
-        <button class="btn btn-primary" onclick="addCategory()">添加</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header"><h3>分类列表</h3></div>
-      <table>
-        <thead><tr><th>ID</th><th>分类名称</th><th>操作</th></tr></thead>
-        <tbody id="cat-list"><tr><td colspan="3" class="empty">加载中...</td></tr></tbody>
-      </table>
     </div>
   </div>
 
@@ -140,22 +110,40 @@
     <div class="card">
       <div class="card-header"><h3>上传视频</h3></div>
       <div class="input-row">
+        <label>所属分类</label>
         <select id="video-cat">
-          <option value="">选择分类</option>
+          <option value="">请选择分类</option>
+          <option value="2">数字 0-9</option>
+          <option value="3">26个字母</option>
+          <option value="4">称谓家人</option>
+          <option value="5">时间日期</option>
+          <option value="6">就医场景</option>
+          <option value="7">政务场景</option>
+          <option value="8">购物场景</option>
+          <option value="9">职场场景</option>
+          <option value="10">其他词汇</option>
         </select>
-        <input type="text" id="video-word" placeholder="词汇名称，如：你好">
       </div>
       <div class="input-row">
+        <label>词汇名称</label>
+        <input type="text" id="video-word" placeholder="如：你好">
+      </div>
+      <div class="input-row">
+        <label>注释说明</label>
+        <input type="text" id="video-desc" placeholder="如：表示打招呼，常用于见面问候（可选）">
+      </div>
+      <div class="input-row">
+        <label>视频文件</label>
         <input type="file" id="video-file" accept="video/*">
         <button class="btn btn-primary" onclick="uploadVideo()">上传</button>
       </div>
-      <div id="upload-status" style="font-size:14px;color:#667eea;margin-top:8px;"></div>
+      <div id="upload-status" style="font-size:14px;color:#667eea;margin-top:4px;"></div>
     </div>
     <div class="card">
       <div class="card-header"><h3>词汇列表</h3></div>
       <table>
-        <thead><tr><th>ID</th><th>词汇</th><th>所属分类</th><th>上传时间</th><th>操作</th></tr></thead>
-        <tbody id="video-list"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody>
+        <thead><tr><th>ID</th><th>词汇</th><th>注释说明</th><th>所属分类</th><th>上传时间</th><th>操作</th></tr></thead>
+        <tbody id="video-list"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -186,17 +174,18 @@
 <script>
   if (!localStorage.getItem('isLogin')) location.href = '/';
 
-  let categories = [];
+  const CAT_MAP = {
+    2: '数字 0-9', 3: '26个字母', 4: '称谓家人', 5: '时间日期',
+    6: '就医场景', 7: '政务场景', 8: '购物场景', 9: '职场场景', 10: '其他词汇'
+  };
 
-  function showPage(name) {
+  function showPage(name, el) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
-    event.currentTarget && event.currentTarget.classList.add('active');
-
+    if (el) el.classList.add('active');
     if (name === 'dashboard') loadStats();
-    if (name === 'category') loadCategories();
-    if (name === 'video') { loadCategories(); loadVideos(); }
+    if (name === 'video') loadVideos();
     if (name === 'user') loadUsers();
     if (name === 'feedback') loadFeedback();
   }
@@ -207,79 +196,29 @@
   }
 
   async function loadStats() {
-    const [catRes, videoRes, userRes] = await Promise.all([
-      fetch('/api/category/list').then(r => r.json()),
+    const [videoRes, userRes, feedbackRes] = await Promise.all([
       fetch('/api/all-words').then(r => r.json()),
-      fetch('/api/admin/users').then(r => r.json())
+      fetch('/api/admin/users').then(r => r.json()),
+      fetch('/api/admin/feedback').then(r => r.json())
     ]);
-    document.getElementById('stat-category').textContent = catRes.data?.length ?? 0;
     document.getElementById('stat-video').textContent = videoRes.data?.length ?? 0;
     document.getElementById('stat-user').textContent = userRes.data?.length ?? 0;
-  }
-
-  async function loadCategories() {
-    const res = await fetch('/api/category/list').then(r => r.json());
-    categories = res.data || [];
-    const tbody = document.getElementById('cat-list');
-    if (!categories.length) { tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无分类</td></tr>'; return; }
-
-    const fixed = categories.filter(c => c.is_fixed);
-    const dynamic = categories.filter(c => !c.is_fixed);
-
-    let rows = '';
-    if (fixed.length) {
-      rows += `<tr><td colspan="3" style="background:#f0f4ff;color:#667eea;font-weight:600;font-size:13px;padding:8px 16px;">🔒 固定分类（不可删除）</td></tr>`;
-      rows += fixed.map(c => `
-        <tr>
-          <td>#${c.id}</td>
-          <td>${c.name}</td>
-          <td><span style="color:#aaa;font-size:13px;">系统固定</span></td>
-        </tr>`).join('');
-    }
-    if (dynamic.length) {
-      rows += `<tr><td colspan="3" style="background:#f0fff4;color:#276749;font-weight:600;font-size:13px;padding:8px 16px;">✏️ 自定义分类（可增删）</td></tr>`;
-      rows += dynamic.map(c => `
-        <tr>
-          <td>#${c.id}</td>
-          <td>${c.name}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="delCategory(${c.id})">删除</button></td>
-        </tr>`).join('');
-    }
-    if (!dynamic.length && fixed.length) {
-      rows += `<tr><td colspan="3" class="empty" style="padding:20px">暂无自定义分类，可在上方添加</td></tr>`;
-    }
-    tbody.innerHTML = rows;
-
-    const sel = document.getElementById('video-cat');
-    if (sel) sel.innerHTML = '<option value="">选择分类</option>' + categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  }
-
-  async function addCategory() {
-    const name = document.getElementById('cat-name').value.trim();
-    if (!name) return alert('请输入分类名称');
-    await fetch('/api/category/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-    document.getElementById('cat-name').value = '';
-    loadCategories();
-  }
-
-  async function delCategory(id) {
-    if (!confirm('确认删除该分类？')) return;
-    await fetch('/api/category/del?id=' + id);
-    loadCategories();
+    const pending = (feedbackRes.data || []).filter(f => !f.status).length;
+    document.getElementById('stat-feedback').textContent = pending;
   }
 
   async function loadVideos() {
     const res = await fetch('/api/all-words').then(r => r.json());
     const videos = res.data || [];
     const tbody = document.getElementById('video-list');
-    if (!videos.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无视频</td></tr>'; return; }
+    if (!videos.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无视频</td></tr>'; return; }
     tbody.innerHTML = videos.map(v => {
-      const cat = categories.find(c => c.id == v.category_id);
       const date = v.created_at ? new Date(v.created_at).toLocaleDateString('zh-CN') : '-';
       return `<tr>
         <td>#${v.id}</td>
-        <td>${v.word_name || '-'}</td>
-        <td>${cat ? cat.name : v.category_id}</td>
+        <td><strong>${v.word_name || '-'}</strong></td>
+        <td style="color:#666;max-width:200px;word-break:break-all">${v.description || '<span style="color:#ccc">无</span>'}</td>
+        <td>${CAT_MAP[v.category_id] || v.category_id}</td>
         <td>${date}</td>
         <td><button class="btn btn-danger btn-sm" onclick="delVideo(${v.id})">删除</button></td>
       </tr>`;
@@ -289,8 +228,9 @@
   async function uploadVideo() {
     const catId = document.getElementById('video-cat').value;
     const word = document.getElementById('video-word').value.trim();
+    const desc = document.getElementById('video-desc').value.trim();
     const file = document.getElementById('video-file').files[0];
-    if (!catId || !word || !file) return alert('请填写完整信息并选择视频文件');
+    if (!catId || !word || !file) return alert('请选择分类、填写词汇名称并选择视频文件');
     if (file.size > 100 * 1024 * 1024) return alert('视频文件不能超过 100MB');
 
     const status = document.getElementById('upload-status');
@@ -301,10 +241,11 @@
     fd.append('video', file);
     fd.append('category_id', catId);
     fd.append('word_name', word);
+    fd.append('description', desc);
 
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 120000); // 2分钟超时
+      const timer = setTimeout(() => controller.abort(), 120000);
       const r = await fetch('/api/upload-video', { method: 'POST', body: fd, signal: controller.signal });
       clearTimeout(timer);
       const res = await r.json();
@@ -312,7 +253,9 @@
         status.style.color = '#38a169';
         status.textContent = '✅ 上传成功！';
         document.getElementById('video-word').value = '';
+        document.getElementById('video-desc').value = '';
         document.getElementById('video-file').value = '';
+        document.getElementById('video-cat').value = '';
         loadVideos();
       } else {
         status.style.color = '#e53e3e';

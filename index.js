@@ -100,12 +100,12 @@ app.get('/api/category/del', async (req, res) => {
 
 // 上传视频
 app.post('/api/upload-video', upload.single('video'), async (req, res) => {
-  const { category_id, word_name } = req.body;
+  const { category_id, word_name, description } = req.body;
   const video_path = 'uploads/video/' + req.file.filename;
   try {
     await db.query(
-      'INSERT INTO videos (category_id, word_name, video_path) VALUES ($1, $2, $3)',
-      [category_id, word_name, video_path]
+      'INSERT INTO videos (category_id, word_name, video_path, description) VALUES ($1, $2, $3, $4)',
+      [category_id, word_name, video_path, description || '']
     );
     res.json({ code: 200, msg: '上传成功' });
   } catch (err) {
