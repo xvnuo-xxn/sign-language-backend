@@ -18,12 +18,37 @@ const db = new Pool({
   connectionString: process.env.DATABASE_URL
 });
 db.connect()
-  .then(() => console.log('✅ 数据库连接成功'))
+  .then(() => {
+    console.log('✅ 数据库连接成功');
+    return seedCategories();
+  })
   .catch(err => console.error('❌ 数据库连接失败:', err.message));
 
 db.on('error', (err) => {
   console.error('数据库连接池错误（已捕获）:', err.message);
 });
+
+// 启动时确保固定分类存在（开发和生产数据库都会执行）
+async function seedCategories() {
+  const fixed = [
+    '数字0-9', '26个字母', '称谓家人', '时间日期',
+    '就医场景', '政务场景', '购物场景', '职场场景', '其他词汇'
+  ];
+  try {
+    for (const name of fixed) {
+      await db.query(
+        `INSERT INTO categories (name, is_fixed)
+         VALUES ($1::varchar, TRUE)
+         ON CONFLICT (name) DO NOTHING`,
+        [name]
+      );
+    }
+    const result = await db.query('SELECT id, name FROM categories ORDER BY id');
+    console.log('✅ 分类数据已就绪：', result.rows.map(r => r.name).join(', '));
+  } catch (err) {
+    console.error('❌ 分类初始化失败:', err.message);
+  }
+}
 
 // 创建上传目录
 if (!fs.existsSync('uploads/video')) {
