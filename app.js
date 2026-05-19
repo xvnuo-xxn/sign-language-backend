@@ -71,6 +71,22 @@ app.get("/api/all-words", async (req, res) => {
   }
 });
 
+// 按分类获取视频
+app.get("/api/all-words/category", async (req, res) => {
+  const { category_id } = req.query;
+  if (!category_id) return res.json({ code: 400, msg: "缺少分类ID" });
+
+  try {
+    const result = await db.query(
+      "SELECT * FROM videos WHERE category_id = $1",
+      [category_id],
+    );
+    res.json({ code: 200, data: result.rows });
+  } catch (err) {
+    res.json({ code: 500, msg: "获取失败" });
+  }
+});
+
 // 删除视频接口（同时删除服务器上的文件）
 app.get("/api/video/del", async (req, res) => {
   const { id } = req.query;
