@@ -17,16 +17,19 @@ db.connect()
   .then(() => console.log("✅ 数据库连接成功"))
   .catch((err) => console.error("❌ 数据库连接失败:", err.message));
 
-// 配置静态文件目录（公网可直接访问）
-app.use("/videos", express.static(path.join(__dirname, "public/videos")));
+// 👇 静态文件路径配置
+app.use(
+  "/uploads/video",
+  express.static(path.join(__dirname, "public/videos")),
+);
 
-// 创建视频存储目录
+// 👇 创建视频存储目录（修复了语法错误）
 const videoDir = path.join(__dirname, "public/videos");
 if (!fs.existsSync(videoDir)) {
   fs.mkdirSync(videoDir, { recursive: true });
 }
 
-// 配置 multer 存储到 public/videos 目录
+// 配置 multer 存储
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, videoDir),
   filename: (req, file, cb) => {
@@ -36,7 +39,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// 上传视频接口（自动生成公网地址）
+// 上传视频接口
 app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   const { category_id, word_name } = req.body;
   const file = req.file;
@@ -45,9 +48,8 @@ app.post("/api/upload-video", upload.single("video"), async (req, res) => {
     return res.json({ code: 400, msg: "参数不完整" });
   }
 
-  // 生成完整公网可访问地址
   const baseUrl = `https://mini-backend--cxy2069577743.replit.app`;
-  const publicVideoUrl = `${baseUrl}/videos/${file.filename}`;
+  const publicVideoUrl = `${baseUrl}/uploads/video/${file.filename}`;
 
   try {
     await db.query(
@@ -87,18 +89,17 @@ app.get("/api/all-words/category", async (req, res) => {
   }
 });
 
-// 删除视频接口（同时删除服务器上的文件）
+// 删除视频接口
 app.get("/api/video/del", async (req, res) => {
   const { id } = req.query;
   try {
-    // 先获取视频地址
     const video = await db.query(
       "SELECT video_path FROM videos WHERE id = $1",
       [id],
     );
     if (video.rows.length > 0) {
       const url = video.rows[0].video_path;
-      const filename = url.split("/videos/")[1];
+      const filename = url.split("/uploads/video/")[1];
       const filePath = path.join(videoDir, filename);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
