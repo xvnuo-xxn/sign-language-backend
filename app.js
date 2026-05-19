@@ -3,7 +3,7 @@ const { Pool } = require("pg");
 const multer = require("multer");
 const cors = require("cors");
 const path = require("path");
-const { Storage } = require("@google-cloud/storage");
+const fs = require("fs");
 
 const app = express();
 app.use(cors());
@@ -17,67 +17,51 @@ db.connect()
   .then(() => console.log("✅ 数据库连接成功"))
   .catch((err) => console.error("❌ 数据库连接失败:", err.message));
 
-db.on("error", (err) => {
-  console.error("数据库错误:", err.message);
+// 配置静态文件目录（公网可直接访问）
+app.use("/videos", express.static(path.join(__dirname, "public/videos")));
+
+// 创建视频存储目录
+const videoDir = path.join(__dirname, "public/videos");
+if (!fs.existsSync(videoDir)) {
+  fs.mkdirSync(videoDir, { recursive: true });
+}
+
+// 配置 multer 存储到 public/videos 目录
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, videoDir),
+  filename: (req, file, cb) => {
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
+  },
 });
+const upload = multer({ storage });
 
-// Replit 持久化存储
-const storage = new Storage();
-const bucketName = process.env.REPLIT_APP_STORAGE_BUCKET;
-const bucket = storage.bucket(bucketName);
-
-// 上传配置
-const upload = multer({ storage: multer.memoryStorage() });
-
-// 首页
-app.get("/", (req, res) => {
-  res.send("✅ 视频后端服务运行正常");
-});
-
-// ==============================================
-// 🔥 只删除了【分类管理】代码，视频分类 category_id 完全保留！
-// ==============================================
-
-// 1. 上传视频（保留 category_id）
+// 上传视频接口（自动生成公网地址）
 app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   const { category_id, word_name } = req.body;
   const file = req.file;
 
-  if (!file || !word_name || !category_id) {
+  if (!file || !category_id || !word_name) {
     return res.json({ code: 400, msg: "参数不完整" });
   }
 
+  // 生成完整公网可访问地址
+  const baseUrl = `https://mini-backend--cxy2069577743.replit.app`;
+  const publicVideoUrl = `${baseUrl}/videos/${file.filename}`;
+
   try {
-    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
-    const blob = bucket.file(fileName);
-
-    const blobStream = blob.createWriteStream({
-      resumable: false,
-      contentType: file.mimetype,
-    });
-
-    blobStream.on("error", () => {
-      res.json({ code: 500, msg: "上传失败" });
-    });
-
-    blobStream.on("finish", async () => {
-      const publicUrl = `https://storage.googleapis.com/${bucketName}/${fileName}`;
-
-      await db.query(
-        "INSERT INTO videos (category_id, word_name, video_path) VALUES ($1, $2, $3)",
-        [category_id, word_name, publicUrl],
-      );
-
-      res.json({ code: 200, msg: "上传成功" });
-    });
-
-    blobStream.end(file.buffer);
+    await db.query(
+      "INSERT INTO videos (category_id, word_name, video_path) VALUES ($1, $2, $3)",
+      [category_id, word_name, publicVideoUrl],
+    );
+    res.json({ code: 200, msg: "上传成功", url: publicVideoUrl });
   } catch (err) {
-    res.json({ code: 500, msg: "服务器异常" });
+    console.error(err);
+    res.json({ code: 500, msg: "数据库写入失败" });
   }
 });
 
-// 2. 视频列表（小程序用）
+// 视频列表接口
 app.get("/api/all-words", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM videos ORDER BY id DESC");
@@ -87,10 +71,23 @@ app.get("/api/all-words", async (req, res) => {
   }
 });
 
-// 3. 删除视频
+// 删除视频接口（同时删除服务器上的文件）
 app.get("/api/video/del", async (req, res) => {
   const { id } = req.query;
   try {
+    // 先获取视频地址
+    const video = await db.query(
+      "SELECT video_path FROM videos WHERE id = $1",
+      [id],
+    );
+    if (video.rows.length > 0) {
+      const url = video.rows[0].video_path;
+      const filename = url.split("/videos/")[1];
+      const filePath = path.join(videoDir, filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
     await db.query("DELETE FROM videos WHERE id = $1", [id]);
     res.json({ code: 200, msg: "删除成功" });
   } catch (err) {
@@ -98,7 +95,6 @@ app.get("/api/video/del", async (req, res) => {
   }
 });
 
-// 启动服务
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log("✅ 服务启动成功，端口：" + PORT);
