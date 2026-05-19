@@ -17,13 +17,14 @@ db.connect()
   .then(() => console.log("✅ 数据库连接成功"))
   .catch((err) => console.error("❌ 数据库连接失败:", err.message));
 
-// 👇 静态文件路径配置
+// 👇 关键：同时支持两个路径，小程序和后台都能用
+app.use("/videos", express.static(path.join(__dirname, "public/videos")));
 app.use(
   "/uploads/video",
   express.static(path.join(__dirname, "public/videos")),
 );
 
-// 👇 创建视频存储目录（修复了语法错误）
+// 创建视频存储目录
 const videoDir = path.join(__dirname, "public/videos");
 if (!fs.existsSync(videoDir)) {
   fs.mkdirSync(videoDir, { recursive: true });
@@ -39,7 +40,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// 上传视频接口
+// 上传视频接口（生成小程序兼容的地址）
 app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   const { category_id, word_name } = req.body;
   const file = req.file;
@@ -49,7 +50,7 @@ app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   }
 
   const baseUrl = `https://mini-backend--cxy2069577743.replit.app`;
-  const publicVideoUrl = `${baseUrl}/uploads/video/${file.filename}`;
+  const publicVideoUrl = `${baseUrl}/videos/${file.filename}`;
 
   try {
     await db.query(
@@ -99,7 +100,7 @@ app.get("/api/video/del", async (req, res) => {
     );
     if (video.rows.length > 0) {
       const url = video.rows[0].video_path;
-      const filename = url.split("/uploads/video/")[1];
+      const filename = url.split("/").pop();
       const filePath = path.join(videoDir, filename);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
