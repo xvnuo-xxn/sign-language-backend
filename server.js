@@ -4,179 +4,250 @@ const multer = require("multer");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const pinyin = require("pinyin");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
+app.use(express.static("public"));
+
+// ========== 基础配置 ==========
+const BASE_URL = "https://mini-backend--cxy2069577743.replit.app";
+
+// 分类名称映射
+const CATEGORY_NAMES = {
+  2: "数字 0-9",
+  3: "26个字母",
+  4: "称谓家人",
+  5: "时间日期",
+  6: "就医场景",
+  7: "政务场景",
+  8: "购物场景",
+  9: "职场场景",
+  10: "其他词汇",
+};
+
+function getFirstLetter(word) {
+  if (!word) return "#";
+  try {
+    const first = pinyin.pinyin(word[0], {
+      style: pinyin.STYLE_FIRST_LETTER,
+      heteronym: false,
+    });
+    if (first && first[0] && first[0][0]) {
+      const letter = first[0][0].toUpperCase();
+      if (/[A-Z]/.test(letter)) return letter;
+    }
+  } catch (e) {
+    console.error("拼音转换失败:", word, e);
+  }
+  return "#";
+}
+
+function getFullVideoUrl(videoPath) {
+  if (!videoPath) return "";
+  if (videoPath.startsWith("http")) return videoPath;
+  return `${BASE_URL}/${videoPath}`;
+}
 
 // 数据库连接
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
 });
+db.connect()
+  .then(() => console.log("✅ 数据库连接成功"))
+  .catch((err) => console.error("❌ 数据库连接失败:", err.message));
 
-// 初始化表
-async function initDB() {
-  try {
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS videos (
-        id SERIAL PRIMARY KEY,
-        category_id INTEGER NOT NULL,
-        word_name TEXT NOT NULL,
-        video_path TEXT NOT NULL,
-        pinyin_first TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    console.log("✅ 数据表初始化成功");
-  } catch (err) {
-    console.error("❌ 数据表初始化失败:", err.message);
-  }
+db.on("error", (err) => console.error("数据库连接池错误:", err.message));
+
+// 上传目录
+if (!fs.existsSync("uploads/video")) {
+  fs.mkdirSync("uploads/video", { recursive: true });
 }
-initDB();
 
-// 视频目录
-const videoDir = path.join(__dirname, "public/videos");
-if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
-
-// 静态资源
-app.use("/videos", express.static(videoDir));
-
-// 上传配置
+// multer 上传配置
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, videoDir),
+  destination: (req, file, cb) => cb(null, "uploads/video"),
   filename: (req, file, cb) => {
-    const name = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
-    cb(null, name);
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
   },
 });
-const upload = multer({ storage });
+const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
 
-// =====================
-// 上传视频接口
-// =====================
-app.post("/api/upload-video", upload.single("video"), async (req, res) => {
-  try {
-    const { category_id, word_name, pinyin_first } = req.body;
-    const file = req.file;
-
-    if (!file || !category_id || !word_name) {
-      return res.json({ code: 400, msg: "参数不全" });
-    }
-
-    // 注意：静态目录对应 /videos
-    const baseUrl = "https://mini-backend--cxy2069577743.replit.app";
-    const videoPath = `${baseUrl}/videos/${file.filename}`;
-
-    await db.query(
-      "INSERT INTO videos (category_id, word_name, video_path, pinyin_first) VALUES ($1,$2,$3,$4)",
-      [parseInt(category_id), word_name, videoPath, pinyin_first || null],
-    );
-
-    res.json({ code: 200, msg: "上传成功", data: { videoPath } });
-  } catch (err) {
-    console.error(err);
-    res.json({ code: 500, msg: "上传失败: " + err.message });
-  }
+// 根路由
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// =====================
-// 分类接口
-// =====================
-app.get("/api/all-words/category", async (req, res) => {
+// 管理员登录
+app.post("/api/login", async (req, res) => {
+  const { account, pwd } = req.body;
   try {
-    const { category_id } = req.query;
-    if (!category_id) return res.json({ code: 400, msg: "缺少category_id" });
-
-    const result = await db.query(
-      "SELECT * FROM videos WHERE category_id = $1::int ORDER BY created_at DESC",
-      [category_id],
-    );
-
-    res.json({ code: 200, data: result.rows });
+    const result = await db.query("SELECT * FROM admin WHERE account=$1 AND pwd=$2", [account, pwd]);
+    if (!result.rows.length) return res.json({ code: 401, msg: "账号或密码错误" });
+    res.json({ code: 200, msg: "登录成功" });
   } catch (err) {
-    console.error(err);
-    res.json({ code: 500, msg: "获取失败: " + err.message });
-  }
-});
-
-// =====================
-// 所有视频接口（非分类）
-// =====================
-app.get("/api/all-words", async (req, res) => {
-  try {
-    const result = await db.query(
-      "SELECT * FROM videos ORDER BY created_at DESC",
-    );
-    res.json({ code: 200, data: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.json({ code: 500, msg: "获取失败: " + err.message });
-  }
-});
-
-// =====================
-// 搜索接口
-// =====================
-app.get("/api/words/search", async (req, res) => {
-  try {
-    const { keyword } = req.query;
-    if (!keyword) return res.json({ code: 400, data: [] });
-
-    const result = await db.query(
-      "SELECT * FROM videos WHERE word_name ILIKE $1 ORDER BY created_at DESC",
-      [`%${keyword}%`],
-    );
-
-    res.json({ code: 200, data: result.rows });
-  } catch (err) {
-    console.error(err);
     res.json({ code: 500, msg: err.message });
   }
 });
 
-// =====================
-// 删除视频接口
-// =====================
-app.get("/api/video/del", async (req, res) => {
+// 分类列表
+app.get("/api/category/list", async (req, res) => {
   try {
-    const { id } = req.query;
-    const video = await db.query(
-      "SELECT video_path FROM videos WHERE id = $1",
-      [id],
-    );
-    if (video.rows.length) {
-      const filename = video.rows[0].video_path.split("/").pop();
-      const filepath = path.join(videoDir, filename);
-      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
-    }
-    await db.query("DELETE FROM videos WHERE id = $1", [id]);
+    const result = await db.query("SELECT * FROM categories ORDER BY is_fixed DESC, id ASC");
+    res.json({ code: 200, data: result.rows });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 添加分类
+app.post("/api/category/add", async (req, res) => {
+  const { name } = req.body;
+  try {
+    await db.query("INSERT INTO categories (name) VALUES ($1)", [name]);
+    res.json({ code: 200, msg: "添加成功" });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 删除分类
+app.get("/api/category/del", async (req, res) => {
+  const { id } = req.query;
+  try {
+    const check = await db.query("SELECT is_fixed FROM categories WHERE id = $1", [id]);
+    if (check.rows[0]?.is_fixed) return res.json({ code: 403, msg: "固定分类不可删除" });
+    await db.query("DELETE FROM categories WHERE id = $1", [id]);
     res.json({ code: 200, msg: "删除成功" });
   } catch (err) {
-    console.error(err);
-    res.json({ code: 500, msg: "删除失败: " + err.message });
+    res.json({ code: 500, msg: err.message });
   }
 });
 
-// =====================
-// 清空所有视频接口（仅测试用，生产可以删掉）
-// =====================
-app.get("/api/clear-videos", async (req, res) => {
+// 上传视频
+app.post("/api/upload-video", upload.single("video"), async (req, res) => {
+  const { category_id, word_name, description } = req.body;
+  const video_path = "uploads/video/" + req.file.filename;
   try {
-    await db.query("DELETE FROM videos");
-    fs.readdirSync(videoDir).forEach((file) =>
-      fs.unlinkSync(path.join(videoDir, file)),
+    await db.query(
+      "INSERT INTO videos (category_id, word_name, video_path, description) VALUES ($1, $2, $3, $4)",
+      [category_id, word_name, video_path, description || ""]
     );
-    res.json({ code: 200, msg: "已清空" });
+    res.json({ code: 200, msg: "上传成功" });
+  } catch (err) {
+    console.error(err);
+    res.json({ code: 500, msg: "数据库写入失败" });
+  }
+});
+
+// 全部视频列表
+app.get("/api/all-words", async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM videos ORDER BY id DESC");
+    res.json({ code: 200, data: result.rows });
   } catch (err) {
     res.json({ code: 500, msg: err.message });
   }
 });
 
-// =====================
-// 启动服务
-// =====================
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ 服务启动成功，端口：${PORT}`);
+// ========== 修正版：按分类获取视频 ==========
+app.get("/api/words-by-category", async (req, res) => {
+  const { category_id } = req.query;
+  try {
+    let result;
+    if (category_id) {
+      result = await db.query("SELECT * FROM videos WHERE category_id = $1 ORDER BY id DESC", [category_id]);
+    } else {
+      result = await db.query("SELECT * FROM videos ORDER BY id DESC");
+    }
+
+    const data = result.rows.map((item) => {
+      const wordName = item.word_name || "";
+      const videoPath = item.video_path || "";
+      let pinyinFirst = "#";
+      try { pinyinFirst = getFirstLetter(wordName); } 
+      catch (err) { console.error("拼音转换失败:", wordName, err); }
+
+      return {
+        ...item,
+        word_name: wordName,
+        video_path: getFullVideoUrl(videoPath),
+        pinyin_first: pinyinFirst,
+        category_name: CATEGORY_NAMES[item.category_id] || "未知分类",
+      };
+    });
+
+    res.json({ code: 200, data });
+  } catch (err) {
+    console.error("words-by-category 接口错误:", err);
+    res.status(500).json({ code: 500, msg: "服务器处理失败: " + err.message });
+  }
 });
+
+// 视频列表兼容旧接口
+app.get("/api/video/list", async (req, res) => {
+  const { category_id } = req.query;
+  try {
+    let result;
+    if (category_id) result = await db.query("SELECT * FROM videos WHERE category_id = $1 ORDER BY id DESC", [category_id]);
+    else result = await db.query("SELECT * FROM videos ORDER BY id DESC");
+    res.json({ code: 200, data: result.rows });
+  } catch (err) { res.json({ code: 500, msg: err.message }); }
+});
+
+// 搜索词汇
+app.get("/api/words/search", async (req, res) => {
+  const { keyword } = req.query;
+  if (!keyword || keyword.trim() === "") return res.json({ code: 200, data: [] });
+  try {
+    const result = await db.query("SELECT * FROM videos WHERE word_name LIKE $1 ORDER BY word_name ASC", [`%${keyword}%`]);
+    const data = result.rows.map(item => ({
+      ...item,
+      video_path: getFullVideoUrl(item.video_path || ""),
+      pinyin_first: getFirstLetter(item.word_name || ""),
+      category_name: CATEGORY_NAMES[item.category_id] || "未知分类"
+    }));
+    res.json({ code: 200, data });
+  } catch (err) { res.json({ code: 500, msg: "搜索失败：" + err.message }); }
+});
+
+// 提交反馈
+app.post("/api/feedback/add", async (req, res) => {
+  const { type, contact, content } = req.body;
+  try {
+    await db.query("INSERT INTO feedback (type, contact, content, status) VALUES ($1, $2, $3, 0)", [type || "其他", contact || "", content]);
+    res.json({ code: 200, msg: "提交成功" });
+  } catch (err) { res.json({ code: 500, msg: err.message }); }
+});
+
+// 删除视频
+app.get("/api/video/del", async (req, res) => {
+  const { id } = req.query;
+  try { await db.query("DELETE FROM videos WHERE id = $1", [id]); res.json({ code: 200, msg: "删除成功" }); }
+  catch (err) { res.json({ code: 500, msg: err.message }); }
+});
+
+// 用户列表
+app.get("/api/admin/users", async (req, res) => {
+  try { const result = await db.query("SELECT * FROM users ORDER BY id DESC"); res.json({ code: 200, data: result.rows }); }
+  catch (err) { res.json({ code: 500, msg: err.message }); }
+});
+
+// 反馈列表
+app.get("/api/admin/feedback", async (req, res) => {
+  try { const result = await db.query("SELECT * FROM feedback ORDER BY id DESC"); res.json({ code: 200, data: result.rows }); }
+  catch (err) { res.json({ code: 500, msg: err.message }); }
+});
+
+// 处理反馈
+app.get("/api/admin/feedback/deal", async (req, res) => {
+  const { id } = req.query;
+  try { await db.query("UPDATE feedback SET status = 1 WHERE id = $1", [id]); res.json({ code: 200, msg: "已处理" }); }
+  catch (err) { res.json({ code: 500, msg: err.message }); }
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, "0.0.0.0", () => console.log(`✅ 服务器启动成功，端口：${PORT}`));
