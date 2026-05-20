@@ -29,16 +29,18 @@ const CATEGORY_NAMES = {
   9: "职场场景",
   10: "其他词汇",
 };
-
 function getFirstLetter(word) {
+  console.log("=== getFirstLetter called, word:", word);
   if (!word) return "#";
   try {
     const first = pinyin(word[0], {
       style: pinyin.STYLE_FIRST_LETTER,
       heteronym: false,
     });
+    console.log("=== pinyin result:", first);
     if (first && first[0] && first[0][0]) {
       const letter = first[0][0].toUpperCase();
+      console.log("=== extracted letter:", letter);
       if (/[A-Z]/.test(letter)) {
         return letter;
       }
