@@ -39,7 +39,7 @@ function getFirstLetter(word) {
     });
     console.log("=== pinyin result:", first);
     if (first && first[0] && first[0][0]) {
-      const letter = first[0][0].toUpperCase();
+      const letter = first[0][0].chatAt(0).toUpperCase();
       console.log("=== extracted letter:", letter);
       if (/[A-Z]/.test(letter)) {
         return letter;
