@@ -72,7 +72,7 @@ app.get("/api/all-words", async (req, res) => {
   }
 });
 
-// 3. 按分类获取视频接口（小程序核心用）
+// 3. 按分类获取视频接口（小程序核心用，修复版）
 app.get("/api/all-words/category", async (req, res) => {
   const { category_id } = req.query;
   if (!category_id) {
