@@ -60,7 +60,7 @@ app.post("/api/upload-video", upload.single("video"), async (req, res) => {
       return res.json({ code: 400, msg: "参数不全" });
     }
 
-    const baseUrl = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+    const baseUrl = "https://mini-backend--cxy2069577743.replit.app";
     const videoPath = `${baseUrl}/videos/${file.filename}`;
 
     await db.query(
@@ -127,6 +127,20 @@ app.get("/api/video/del", async (req, res) => {
   }
 });
 
+app.get("/api/clear-videos", async (req, res) => {
+  try {
+    await db.query("DELETE FROM videos");
+    res.json({
+      code: 200,
+      msg: "已清空",
+    });
+  } catch (err) {
+    res.json({
+      code: 500,
+      msg: err.message,
+    });
+  }
+});
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ 服务启动成功，端口：${PORT}`);
