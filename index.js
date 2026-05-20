@@ -4,6 +4,7 @@ const multer = require("multer");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const pinyin = require("pinyin");
 
 const app = express();
 app.use(cors());
@@ -29,52 +30,24 @@ const CATEGORY_NAMES = {
   10: "其他词汇",
 };
 
-// ========== 拼音首字母工具函数 ==========
 function getFirstLetter(word) {
   if (!word) return "#";
-  const firstChar = word.charAt(0);
-
-  // 英文直接返回大写
-  if (/[a-zA-Z]/.test(firstChar)) {
-    return firstChar.toUpperCase();
-  }
-
-  // 中文转拼音首字母（GB2312编码区间）
-  const charCode = firstChar.charCodeAt(0);
-  const pinyinMap = [
-    { letter: "A", min: 0xb0a1, max: 0xb0c4 },
-    { letter: "B", min: 0xb0c5, max: 0xb2c0 },
-    { letter: "C", min: 0xb2c1, max: 0xb4ed },
-    { letter: "D", min: 0xb4ee, max: 0xb6e9 },
-    { letter: "E", min: 0xb6ea, max: 0xb7a1 },
-    { letter: "F", min: 0xb7a2, max: 0xb8c0 },
-    { letter: "G", min: 0xb8c1, max: 0xb9fd },
-    { letter: "H", min: 0xb9fe, max: 0xbbf6 },
-    { letter: "J", min: 0xbbf7, max: 0xbfa5 },
-    { letter: "K", min: 0xbfa6, max: 0xc0ab },
-    { letter: "L", min: 0xc0ac, max: 0xc2e7 },
-    { letter: "M", min: 0xc2e8, max: 0xc4c2 },
-    { letter: "N", min: 0xc4c3, max: 0xc5b5 },
-    { letter: "O", min: 0xc5b6, max: 0xc5bd },
-    { letter: "P", min: 0xc5be, max: 0xc6d9 },
-    { letter: "Q", min: 0xc6da, max: 0xc8ba },
-    { letter: "R", min: 0xc8bb, max: 0xc8f5 },
-    { letter: "S", min: 0xc8f6, max: 0xcbf9 },
-    { letter: "T", min: 0xcbfa, max: 0xcdd9 },
-    { letter: "W", min: 0xcdda, max: 0xcef3 },
-    { letter: "X", min: 0xcef4, max: 0xd1b8 },
-    { letter: "Y", min: 0xd1b9, max: 0xd4d0 },
-    { letter: "Z", min: 0xd4d1, max: 0xd7f9 },
-  ];
-
-  for (const range of pinyinMap) {
-    if (charCode >= range.min && charCode <= range.max) {
-      return range.letter;
+  try {
+    const first = pinyin(word[0], {
+      style: pinyin.STYLE_FIRST_LETTER,
+      heteronym: false,
+    });
+    if (first && first[0] && first[0][0]) {
+      const letter = first[0][0].toUpperCase();
+      if (/[A-Z]/.test(letter)) {
+        return letter;
+      }
     }
+  } catch (e) {
+    console.error("拼音转换失败:", e);
   }
   return "#";
 }
-
 // 补全视频路径为完整URL
 function getFullVideoUrl(videoPath) {
   if (!videoPath) return "";
