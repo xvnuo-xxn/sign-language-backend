@@ -33,7 +33,7 @@ function getFirstLetter(word) {
   console.log("=== getFirstLetter called, word:", word);
   if (!word) return "#";
   try {
-    const first = pinyin(word[0], {
+    const first = pinyin.pinyin(word[0], {
       style: pinyin.STYLE_FIRST_LETTER,
       heteronym: false,
     });
