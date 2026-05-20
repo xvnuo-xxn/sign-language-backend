@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 数据库
+// 数据库连接
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
@@ -17,10 +17,10 @@ db.connect()
   .then(() => console.log("✅ 数据库连接成功"))
   .catch((err) => console.error("❌ 数据库连接失败:", err.message));
 
-// 静态资源
+// 静态资源：视频目录
 app.use("/videos", express.static(path.join(__dirname, "public/videos")));
 
-// 目录创建
+// 创建视频存储目录
 const videoDir = path.join(__dirname, "public/videos");
 if (!fs.existsSync(videoDir)) {
   fs.mkdirSync(videoDir, { recursive: true });
@@ -36,18 +36,19 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ------------------------------
-// 上传视频（已完美适配你的 admin.html）
-// ------------------------------
+// 1. 上传视频接口（后台管理用）
 app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   const { category_id, word_name } = req.body;
   const file = req.file;
 
   if (!file || !category_id || !word_name) {
-    return res.json({ code: 400, msg: "请完整填写分类、词汇、视频" });
+    return res.json({
+      code: 400,
+      msg: "请完整填写分类、词汇名称并选择视频文件",
+    });
   }
 
-  const baseUrl = "https://mini-backend--cxy2069577743.replit.app";
+  const baseUrl = `https://mini-backend--cxy2069577743.replit.app`;
   const videoPath = `${baseUrl}/videos/${file.filename}`;
 
   try {
@@ -61,24 +62,22 @@ app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   }
 });
 
-// ------------------------------
-// 获取所有视频
-// ------------------------------
+// 2. 获取所有视频接口（后台管理用）
 app.get("/api/all-words", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM videos ORDER BY id DESC");
     res.json({ code: 200, data: result.rows });
-  } catch (e) {
-    res.json({ code: 500, msg: e.message });
+  } catch (err) {
+    res.json({ code: 500, msg: "获取失败：" + err.message });
   }
 });
 
-// ------------------------------
-// 按分类获取视频（小程序专用）
-// ------------------------------
+// 3. 按分类获取视频接口（小程序核心用）
 app.get("/api/all-words/category", async (req, res) => {
   const { category_id } = req.query;
-  if (!category_id) return res.json({ code: 400, msg: "缺少分类ID" });
+  if (!category_id) {
+    return res.json({ code: 400, msg: "缺少 category_id 参数" });
+  }
 
   try {
     const result = await db.query(
@@ -87,13 +86,11 @@ app.get("/api/all-words/category", async (req, res) => {
     );
     res.json({ code: 200, data: result.rows });
   } catch (err) {
-    res.json({ code: 500, msg: "获取失败" });
+    res.json({ code: 500, msg: "获取失败：" + err.message });
   }
 });
 
-// ------------------------------
-// 删除视频
-// ------------------------------
+// 4. 删除视频接口（后台管理用）
 app.get("/api/video/del", async (req, res) => {
   const { id } = req.query;
   try {
@@ -108,23 +105,13 @@ app.get("/api/video/del", async (req, res) => {
     }
     await db.query("DELETE FROM videos WHERE id = $1", [id]);
     res.json({ code: 200, msg: "删除成功" });
-  } catch (e) {
-    res.json({ code: 500, msg: e.message });
+  } catch (err) {
+    res.json({ code: 500, msg: "删除失败：" + err.message });
   }
 });
 
-// 以下接口保持不动，适配你的管理后台
-app.get("/api/admin/users", async (req, res) => {
-  res.json({ code: 200, data: [] });
-});
-app.get("/api/admin/feedback", async (req, res) => {
-  res.json({ code: 200, data: [] });
-});
-app.get("/api/admin/feedback/deal", async (req, res) => {
-  res.json({ code: 200, msg: "成功" });
-});
-
+// 启动服务
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("✅ 服务启动成功，端口：" + PORT);
+  console.log("✅ 后端服务启动成功，端口：" + PORT);
 });
