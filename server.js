@@ -15,7 +15,7 @@ const db = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// 创建表（如果不存在）
+// 初始化表
 async function initDB() {
   try {
     await db.query(`
@@ -24,6 +24,7 @@ async function initDB() {
         category_id INTEGER NOT NULL,
         word_name TEXT NOT NULL,
         video_path TEXT NOT NULL,
+        pinyin_first TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -36,9 +37,9 @@ initDB();
 
 // 视频目录
 const videoDir = path.join(__dirname, "public/videos");
-if (!fs.existsSync(videoDir)) {
-  fs.mkdirSync(videoDir, { recursive: true });
-}
+if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
+
+// 静态资源
 app.use("/videos", express.static(videoDir));
 
 // 上传配置
@@ -51,41 +52,47 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// 1. 上传视频接口
+// =====================
+// 上传视频接口
+// =====================
 app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   try {
-    const { category_id, word_name } = req.body;
+    const { category_id, word_name, pinyin_first } = req.body;
     const file = req.file;
+
     if (!file || !category_id || !word_name) {
       return res.json({ code: 400, msg: "参数不全" });
     }
 
+    // 注意：静态目录对应 /videos
     const baseUrl = "https://mini-backend--cxy2069577743.replit.app";
     const videoPath = `${baseUrl}/videos/${file.filename}`;
 
     await db.query(
-      "INSERT INTO videos (category_id, word_name, video_path) VALUES ($1, $2, $3)",
-      [category_id, word_name, videoPath],
+      "INSERT INTO videos (category_id, word_name, video_path, pinyin_first) VALUES ($1,$2,$3,$4)",
+      [parseInt(category_id), word_name, videoPath, pinyin_first || null],
     );
-    res.json({ code: 200, msg: "上传成功" });
+
+    res.json({ code: 200, msg: "上传成功", data: { videoPath } });
   } catch (err) {
     console.error(err);
     res.json({ code: 500, msg: "上传失败: " + err.message });
   }
 });
 
-// 2. 按分类获取视频接口（核心修复）
+// =====================
+// 分类接口
+// =====================
 app.get("/api/all-words/category", async (req, res) => {
   try {
     const { category_id } = req.query;
-    if (!category_id) {
-      return res.json({ code: 400, msg: "缺少category_id" });
-    }
+    if (!category_id) return res.json({ code: 400, msg: "缺少category_id" });
 
     const result = await db.query(
-      "SELECT * FROM videos WHERE category_id = $1 ORDER BY created_at DESC",
+      "SELECT * FROM videos WHERE category_id = $1::int ORDER BY created_at DESC",
       [category_id],
     );
+
     res.json({ code: 200, data: result.rows });
   } catch (err) {
     console.error(err);
@@ -93,7 +100,9 @@ app.get("/api/all-words/category", async (req, res) => {
   }
 });
 
-// 3. 获取所有视频接口
+// =====================
+// 所有视频接口（非分类）
+// =====================
 app.get("/api/all-words", async (req, res) => {
   try {
     const result = await db.query(
@@ -106,7 +115,29 @@ app.get("/api/all-words", async (req, res) => {
   }
 });
 
-// 4. 删除视频接口
+// =====================
+// 搜索接口
+// =====================
+app.get("/api/words/search", async (req, res) => {
+  try {
+    const { keyword } = req.query;
+    if (!keyword) return res.json({ code: 400, data: [] });
+
+    const result = await db.query(
+      "SELECT * FROM videos WHERE word_name ILIKE $1 ORDER BY created_at DESC",
+      [`%${keyword}%`],
+    );
+
+    res.json({ code: 200, data: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// =====================
+// 删除视频接口
+// =====================
 app.get("/api/video/del", async (req, res) => {
   try {
     const { id } = req.query;
@@ -127,20 +158,24 @@ app.get("/api/video/del", async (req, res) => {
   }
 });
 
+// =====================
+// 清空所有视频接口（仅测试用，生产可以删掉）
+// =====================
 app.get("/api/clear-videos", async (req, res) => {
   try {
     await db.query("DELETE FROM videos");
-    res.json({
-      code: 200,
-      msg: "已清空",
-    });
+    fs.readdirSync(videoDir).forEach((file) =>
+      fs.unlinkSync(path.join(videoDir, file)),
+    );
+    res.json({ code: 200, msg: "已清空" });
   } catch (err) {
-    res.json({
-      code: 500,
-      msg: err.message,
-    });
+    res.json({ code: 500, msg: err.message });
   }
 });
+
+// =====================
+// 启动服务
+// =====================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ 服务启动成功，端口：${PORT}`);
