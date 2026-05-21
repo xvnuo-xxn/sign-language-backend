@@ -146,14 +146,29 @@ app.post("/api/login", async (req, res) => {
 });
 
 // 分类列表
-app.get("/api/category/list", async (req, res) => {
+// ========== 替换这段代码 ==========
+app.get("/api/words-by-category", async (req, res) => {
+  const { category_id } = req.query;
+  console.log("👉 收到请求，category_id:", category_id); // 打印日志
+
   try {
+    // 1. 只执行最简单的数据库查询
     const result = await db.query(
-      "SELECT * FROM categories ORDER BY is_fixed DESC, id ASC",
+      "SELECT * FROM videos WHERE category_id = $1 ORDER BY id DESC",
+      [category_id],
     );
-    res.json({ code: 200, data: result.rows });
+
+    console.log("✅ 数据库查询成功，数据条数:", result.rows.length);
+
+    // 2. 直接返回数据库原始数据，不做任何处理（防止处理逻辑报错）
+    res.json({
+      code: 200,
+      data: result.rows,
+    });
   } catch (err) {
-    res.json({ code: 500, msg: err.message });
+    // 3. 如果报错，打印详细错误信息到控制台
+    console.error("❌ 接口报错详情:", err);
+    res.status(500).json({ code: 500, msg: err.message });
   }
 });
 
