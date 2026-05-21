@@ -9,9 +9,9 @@ const pinyin = require("pinyin");
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use("/uploads", express.static("uploads"));
 
-// 托管管理员前端页面
+// 【重要修改】使用绝对路径映射静态资源，解决视频 500 错误
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use(express.static("public"));
 
 // ========== 基础配置 ==========
@@ -29,35 +29,34 @@ const CATEGORY_NAMES = {
   9: "职场场景",
   10: "其他词汇",
 };
+
+// 拼音首字母工具函数
 function getFirstLetter(word) {
-  console.log("=== getFirstLetter called, word:", word);
   if (!word) return "#";
   try {
     const first = pinyin.pinyin(word[0], {
       style: pinyin.STYLE_FIRST_LETTER,
       heteronym: false,
     });
-    console.log("=== pinyin result:", first);
     if (first && first[0] && first[0][0]) {
       const letter = first[0][0].toUpperCase();
-      console.log("=== extracted letter:", letter);
-      if (/[A-Z]/.test(letter)) {
-        return letter;
-      }
+      if (/[A-Z]/.test(letter)) return letter;
     }
   } catch (e) {
-    console.error("拼音转换失败:", e);
+    console.error("拼音转换失败:", word, e);
   }
   return "#";
 }
+
 // 补全视频路径为完整URL
 function getFullVideoUrl(videoPath) {
   if (!videoPath) return "";
   if (videoPath.startsWith("http")) return videoPath;
+  // 确保路径拼接正确
   return `${BASE_URL}/${videoPath}`;
 }
 
-// 数据库连接（Replit PostgreSQL）
+// 数据库连接
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
@@ -88,19 +87,11 @@ async function seedCategories() {
   try {
     for (const name of fixed) {
       await db.query(
-        `INSERT INTO categories (name, is_fixed)
-           VALUES ($1::varchar, TRUE)
-           ON CONFLICT (name) DO NOTHING`,
+        `INSERT INTO categories (name, is_fixed) VALUES ($1::varchar, TRUE) ON CONFLICT (name) DO NOTHING`,
         [name],
       );
     }
-    const result = await db.query(
-      "SELECT id, name FROM categories ORDER BY id",
-    );
-    console.log(
-      "✅ 分类数据已就绪：",
-      result.rows.map((r) => r.name).join(", "),
-    );
+    console.log("✅ 分类数据已就绪");
   } catch (err) {
     console.error("❌ 分类初始化失败:", err.message);
   }
@@ -111,7 +102,7 @@ if (!fs.existsSync("uploads/video")) {
   fs.mkdirSync("uploads/video", { recursive: true });
 }
 
-// 配置文件上传
+// 文件上传配置
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/video"),
   filename: (req, file, cb) => {
@@ -119,12 +110,9 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + path.extname(file.originalname));
   },
 });
-const upload = multer({
-  storage,
-  limits: { fileSize: 100 * 1024 * 1024 },
-});
+const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
 
-// 根路由 → 跳转到登录页
+// 根路由
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
@@ -137,7 +125,7 @@ app.post("/api/login", async (req, res) => {
       "SELECT * FROM admin WHERE account=$1 AND pwd=$2",
       [account, pwd],
     );
-    if (result.rows.length === 0)
+    if (!result.rows.length)
       return res.json({ code: 401, msg: "账号或密码错误" });
     res.json({ code: 200, msg: "登录成功" });
   } catch (err) {
@@ -146,29 +134,14 @@ app.post("/api/login", async (req, res) => {
 });
 
 // 分类列表
-// ========== 替换这段代码 ==========
-app.get("/api/words-by-category", async (req, res) => {
-  const { category_id } = req.query;
-  console.log("👉 收到请求，category_id:", category_id); // 打印日志
-
+app.get("/api/category/list", async (req, res) => {
   try {
-    // 1. 只执行最简单的数据库查询
     const result = await db.query(
-      "SELECT * FROM videos WHERE category_id = $1 ORDER BY id DESC",
-      [category_id],
+      "SELECT * FROM categories ORDER BY is_fixed DESC, id ASC",
     );
-
-    console.log("✅ 数据库查询成功，数据条数:", result.rows.length);
-
-    // 2. 直接返回数据库原始数据，不做任何处理（防止处理逻辑报错）
-    res.json({
-      code: 200,
-      data: result.rows,
-    });
+    res.json({ code: 200, data: result.rows });
   } catch (err) {
-    // 3. 如果报错，打印详细错误信息到控制台
-    console.error("❌ 接口报错详情:", err);
-    res.status(500).json({ code: 500, msg: err.message });
+    res.json({ code: 500, msg: err.message });
   }
 });
 
@@ -183,7 +156,7 @@ app.post("/api/category/add", async (req, res) => {
   }
 });
 
-// 删除分类（固定分类不可删）
+// 删除分类
 app.get("/api/category/del", async (req, res) => {
   const { id } = req.query;
   try {
@@ -191,9 +164,8 @@ app.get("/api/category/del", async (req, res) => {
       "SELECT is_fixed FROM categories WHERE id = $1",
       [id],
     );
-    if (check.rows[0]?.is_fixed) {
+    if (check.rows[0]?.is_fixed)
       return res.json({ code: 403, msg: "固定分类不可删除" });
-    }
     await db.query("DELETE FROM categories WHERE id = $1", [id]);
     res.json({ code: 200, msg: "删除成功" });
   } catch (err) {
@@ -227,9 +199,11 @@ app.get("/api/all-words", async (req, res) => {
   }
 });
 
-// ========== 按分类获取视频（小程序核心用）- 已增强 ==========
+// ========== 【核心修改】按分类获取视频（唯一且正确的路由） ==========
 app.get("/api/words-by-category", async (req, res) => {
   const { category_id } = req.query;
+  console.log("👉 收到请求，category_id:", category_id);
+
   try {
     let result;
     if (category_id) {
@@ -241,77 +215,43 @@ app.get("/api/words-by-category", async (req, res) => {
       result = await db.query("SELECT * FROM videos ORDER BY id DESC");
     }
 
-    // 加工数据：补全URL + 添加拼音首字母 + 添加分类名称
+    // 加工数据：补全URL + 添加拼音首字母
     const data = result.rows.map((item) => ({
       ...item,
-      video_path: getFullVideoUrl(item.video_path),
+      // 关键：返回完整 URL，字段名为 video_url
+      video_url: getFullVideoUrl(item.video_path),
+      // 关键：计算拼音首字母
       pinyin_first: getFirstLetter(item.word_name),
       category_name: CATEGORY_NAMES[item.category_id] || "未知分类",
     }));
 
+    console.log("✅ 处理完成，返回数据条数:", data.length);
     res.json({ code: 200, data: data });
   } catch (err) {
-    res.json({ code: 500, msg: err.message });
+    console.error("❌ 接口报错详情:", err);
+    res.status(500).json({ code: 500, msg: err.message });
   }
 });
 
-// 视频列表（兼容旧接口名）
-app.get("/api/video/list", async (req, res) => {
-  const { category_id } = req.query;
-  try {
-    let result;
-    if (category_id) {
-      result = await db.query(
-        "SELECT * FROM videos WHERE category_id = $1 ORDER BY id DESC",
-        [category_id],
-      );
-    } else {
-      result = await db.query("SELECT * FROM videos ORDER BY id DESC");
-    }
-    res.json({ code: 200, data: result.rows });
-  } catch (err) {
-    res.json({ code: 500, msg: err.message });
-  }
-});
-
-// ========== 新增：搜索词汇接口 ==========
+// 搜索词汇
 app.get("/api/words/search", async (req, res) => {
   const { keyword } = req.query;
-
-  if (!keyword || keyword.trim() === "") {
+  if (!keyword || keyword.trim() === "")
     return res.json({ code: 200, data: [] });
-  }
-
   try {
     const result = await db.query(
       "SELECT * FROM videos WHERE word_name LIKE $1 ORDER BY word_name ASC",
       [`%${keyword}%`],
     );
-
     const data = result.rows.map((item) => ({
       ...item,
-      video_path: getFullVideoUrl(item.video_path),
+      video_url: getFullVideoUrl(item.video_path),
       pinyin_first: getFirstLetter(item.word_name),
       category_name: CATEGORY_NAMES[item.category_id] || "未知分类",
     }));
-
-    res.json({ code: 200, data: data });
+    res.json({ code: 200, data });
   } catch (err) {
     res.json({ code: 500, msg: "搜索失败：" + err.message });
-  }
-});
-
-// 小程序提交反馈
-app.post("/api/feedback/add", async (req, res) => {
-  const { type, contact, content } = req.body;
-  try {
-    await db.query(
-      "INSERT INTO feedback (type, contact, content, status) VALUES ($1, $2, $3, 0)",
-      [type || "其他", contact || "", content],
-    );
-    res.json({ code: 200, msg: "提交成功" });
-  } catch (err) {
-    res.json({ code: 500, msg: err.message });
   }
 });
 
