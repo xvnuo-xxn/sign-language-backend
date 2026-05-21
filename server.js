@@ -10,10 +10,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// BASE_URL
 const BASE_URL = "https://mini-backend--cxy2069577743.replit.app";
 
-// 分类名称映射
 const CATEGORY_NAMES = {
   2: "数字 0-9",
   3: "26个字母",
@@ -26,7 +24,6 @@ const CATEGORY_NAMES = {
   10: "其他词汇",
 };
 
-// 拼音首字母工具函数
 function getFirstLetter(word) {
   if (!word) return "#";
   try {
@@ -44,16 +41,22 @@ function getFirstLetter(word) {
   return "#";
 }
 
-// 补全视频路径为完整URL
 function getFullVideoUrl(videoPath) {
   if (!videoPath) return "";
   if (videoPath.startsWith("http")) return videoPath;
   return `${BASE_URL}/${videoPath}`;
 }
 
-// 数据库连接
+// 数据库连接 - 增加错误处理防止崩溃
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
+
+db.on("error", (err) => {
+  console.error("数据库连接池错误（已捕获，不会崩溃）:", err.message);
 });
 
 db.connect()
@@ -65,7 +68,6 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/videos", express.static(path.join(__dirname, "public/videos")));
 app.use(express.static("public"));
 
-// 创建上传目录
 const videoDirs = ["uploads/video", "public/videos"];
 videoDirs.forEach((dir) => {
   if (!fs.existsSync(dir)) {
@@ -73,7 +75,6 @@ videoDirs.forEach((dir) => {
   }
 });
 
-// 文件上传配置
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/video"),
   filename: (req, file, cb) => {
@@ -83,12 +84,10 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
 
-// 根路由
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-// 管理员登录
 app.post("/api/login", async (req, res) => {
   const { account, pwd } = req.body;
   try {
@@ -104,7 +103,6 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// 分类列表
 app.get("/api/category/list", async (req, res) => {
   try {
     const result = await db.query(
@@ -116,7 +114,6 @@ app.get("/api/category/list", async (req, res) => {
   }
 });
 
-// 添加分类
 app.post("/api/category/add", async (req, res) => {
   const { name } = req.body;
   try {
@@ -127,7 +124,6 @@ app.post("/api/category/add", async (req, res) => {
   }
 });
 
-// 删除分类
 app.get("/api/category/del", async (req, res) => {
   const { id } = req.query;
   try {
@@ -144,11 +140,9 @@ app.get("/api/category/del", async (req, res) => {
   }
 });
 
-// 上传视频
 app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   const { category_id, word_name, description } = req.body;
   const video_path = "uploads/video/" + req.file.filename;
-
   try {
     await db.query(
       "INSERT INTO videos (category_id, word_name, video_path, description) VALUES ($1, $2, $3, $4)",
@@ -161,11 +155,9 @@ app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   }
 });
 
-// 全部视频列表
 app.get("/api/all-words", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM videos ORDER BY id DESC");
-
     const data = result.rows.map((item) => ({
       id: item.id,
       word: item.word_name,
@@ -180,18 +172,14 @@ app.get("/api/all-words", async (req, res) => {
       description: item.description || "",
       is_favorite: item.is_favorite || false,
     }));
-
     res.json({ code: 200, data });
   } catch (err) {
     res.json({ code: 500, msg: err.message });
   }
 });
 
-// 按分类获取视频
 app.get("/api/words-by-category", async (req, res) => {
   const { category_id } = req.query;
-  console.log("收到请求，category_id:", category_id);
-
   try {
     let result;
     if (category_id) {
@@ -202,7 +190,6 @@ app.get("/api/words-by-category", async (req, res) => {
     } else {
       result = await db.query("SELECT * FROM videos ORDER BY id DESC");
     }
-
     const data = result.rows.map((item) => ({
       id: item.id,
       word: item.word_name,
@@ -217,8 +204,6 @@ app.get("/api/words-by-category", async (req, res) => {
       description: item.description || "",
       is_favorite: item.is_favorite || false,
     }));
-
-    console.log("处理完成，返回数据条数:", data.length);
     res.json({ code: 200, data });
   } catch (err) {
     console.error("接口报错:", err);
@@ -226,18 +211,15 @@ app.get("/api/words-by-category", async (req, res) => {
   }
 });
 
-// 搜索词汇
 app.get("/api/words/search", async (req, res) => {
   const { keyword } = req.query;
   if (!keyword || keyword.trim() === "")
     return res.json({ code: 200, data: [] });
-
   try {
     const result = await db.query(
       "SELECT * FROM videos WHERE word_name LIKE $1 ORDER BY word_name ASC",
       [`%${keyword}%`],
     );
-
     const data = result.rows.map((item) => ({
       id: item.id,
       word: item.word_name,
@@ -247,14 +229,12 @@ app.get("/api/words/search", async (req, res) => {
       category_id: item.category_id,
       category_name: CATEGORY_NAMES[item.category_id] || "未知分类",
     }));
-
     res.json({ code: 200, data });
   } catch (err) {
     res.json({ code: 500, msg: "搜索失败：" + err.message });
   }
 });
 
-// 删除视频
 app.get("/api/video/del", async (req, res) => {
   const { id } = req.query;
   try {
@@ -266,7 +246,6 @@ app.get("/api/video/del", async (req, res) => {
       const filepath = video.rows[0].video_path;
       if (fs.existsSync(filepath)) {
         fs.unlinkSync(filepath);
-        console.log("已删除文件:", filepath);
       }
     }
     await db.query("DELETE FROM videos WHERE id = $1", [id]);
@@ -276,7 +255,6 @@ app.get("/api/video/del", async (req, res) => {
   }
 });
 
-// 用户列表
 app.get("/api/admin/users", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM users ORDER BY id DESC");
@@ -286,7 +264,6 @@ app.get("/api/admin/users", async (req, res) => {
   }
 });
 
-// 反馈列表
 app.get("/api/admin/feedback", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM feedback ORDER BY id DESC");
@@ -296,7 +273,21 @@ app.get("/api/admin/feedback", async (req, res) => {
   }
 });
 
-// 处理反馈
+// 提交反馈（小程序用）
+app.post("/api/feedback/add", async (req, res) => {
+  const { type, contact, content } = req.body;
+  try {
+    await db.query(
+      "INSERT INTO feedback (type, contact, content, status) VALUES ($1, $2, $3, 0)",
+      [type || "其他", contact || "", content],
+    );
+    res.json({ code: 200, msg: "提交成功" });
+  } catch (err) {
+    console.error("反馈提交失败:", err);
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
 app.get("/api/admin/feedback/deal", async (req, res) => {
   const { id } = req.query;
   try {
@@ -307,7 +298,6 @@ app.get("/api/admin/feedback/deal", async (req, res) => {
   }
 });
 
-// 收藏功能
 app.post("/api/favorite", async (req, res) => {
   const { word_id, is_favorite } = req.body;
   try {
@@ -321,7 +311,6 @@ app.post("/api/favorite", async (req, res) => {
   }
 });
 
-// 启动服务
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`服务器启动成功，端口：${PORT}`);
