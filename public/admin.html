@@ -424,21 +424,25 @@
         location.href = "/";
       }
 
-      async function loadStats() {
-        const [videoRes, userRes, feedbackRes] = await Promise.all([
-          fetch("/api/all-words").then((r) => r.json()),
-          fetch("/api/admin/users").then((r) => r.json()),
-          fetch("/api/admin/feedback").then((r) => r.json()),
-        ]);
-        document.getElementById("stat-video").textContent =
-          videoRes.data?.length ?? 0;
-        document.getElementById("stat-user").textContent =
-          userRes.data?.length ?? 0;
-        const pending = (feedbackRes.data || []).filter(
-          (f) => !f.status,
-        ).length;
-        document.getElementById("stat-feedback").textContent = pending;
-      }
+   async function loadStats() {
+  try {
+    const [videoRes, userRes, feedbackRes] = await Promise.all([
+      fetch("/api/all-words").then((r) => r.json()),
+      fetch("/api/admin/users").then((r) => r.json()).catch(() => ({ data: [] })),
+      fetch("/api/admin/feedback").then((r) => r.json()),
+    ]);
+    document.getElementById("stat-video").textContent =
+      videoRes.data?.length ?? 0;
+    document.getElementById("stat-user").textContent =
+      userRes.data?.length ?? 0;
+    const pending = (feedbackRes.data || []).filter(
+      (f) => !f.status,
+    ).length;
+    document.getElementById("stat-feedback").textContent = pending;
+  } catch (err) {
+    console.error('加载统计数据失败:', err);
+  }
+}
 
       async function loadVideos() {
         const res = await fetch("/api/all-words").then((r) => r.json());
