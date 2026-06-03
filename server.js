@@ -72,6 +72,7 @@ async function initDatabase() {
       )
     `);
 
+    // 保留 description 字段以兼容旧数据库，但业务逻辑中不再使用
     await db.query(`
       CREATE TABLE IF NOT EXISTS videos (
         id SERIAL PRIMARY KEY,
@@ -104,7 +105,6 @@ async function initDatabase() {
       )
     `);
 
-    // 【新增】创建 users 表，用于前端用户管理页面
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -213,9 +213,9 @@ app.get("/api/category/del", async (req, res) => {
   }
 });
 
-// 上传视频 (已完美支持 description)
+// 上传视频 (移除了 description 处理)
 app.post("/api/upload-video", upload.single("video"), async (req, res) => {
-  const { category_id, word_name, description } = req.body;
+  const { category_id, word_name } = req.body;
   if (!req.file) return res.json({ code: 400, msg: "未选择视频文件" });
   if (!category_id) return res.json({ code: 400, msg: "未选择分类" });
   if (!word_name || word_name.trim() === "") return res.json({ code: 400, msg: "词汇名称不能为空" });
@@ -223,19 +223,18 @@ app.post("/api/upload-video", upload.single("video"), async (req, res) => {
   const video_path = "uploads/video/" + req.file.filename;
   try {
     await db.query(
-      "INSERT INTO videos (category_id, word_name, video_path, description) VALUES ($1, $2, $3, $4)",
-      [category_id, word_name.trim(), video_path, description || ""]
+      "INSERT INTO videos (category_id, word_name, video_path) VALUES ($1, $2, $3)",
+      [category_id, word_name.trim(), video_path]
     );
     res.json({ code: 200, msg: "上传成功" });
   } catch (err) {
     console.error(err);
-    // 删除上传失败的文件
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     res.json({ code: 500, msg: "数据库写入失败：" + err.message });
   }
 });
 
-// 全部视频列表 (【修复】补充返回 description 字段)
+// 全部视频列表
 app.get("/api/all-words", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM videos ORDER BY id DESC");
@@ -243,7 +242,6 @@ app.get("/api/all-words", async (req, res) => {
       id: item.id,
       word: item.word_name,
       word_name: item.word_name,
-      description: item.description || "", // 新增返回注释
       pinyin: item.pinyin || "",
       pinyin_first: getFirstLetter(item.word_name),
       video_url: getFullVideoUrl(item.video_path),
@@ -258,7 +256,7 @@ app.get("/api/all-words", async (req, res) => {
   }
 });
 
-// 按分类获取视频 (【修复】补充返回 description 字段)
+// 按分类获取视频
 app.get("/api/words-by-category", async (req, res) => {
   const { category_id } = req.query;
   try {
@@ -272,7 +270,6 @@ app.get("/api/words-by-category", async (req, res) => {
       id: item.id,
       word: item.word_name,
       word_name: item.word_name,
-      description: item.description || "", // 新增返回注释
       pinyin: item.pinyin || "",
       pinyin_first: getFirstLetter(item.word_name),
       video_url: getFullVideoUrl(item.video_path),
@@ -287,7 +284,7 @@ app.get("/api/words-by-category", async (req, res) => {
   }
 });
 
-// 搜索词汇 (【修复】补充返回 description 字段)
+// 搜索词汇
 app.get("/api/words/search", async (req, res) => {
   const { keyword } = req.query;
   if (!keyword || keyword.trim() === "") return res.json({ code: 200, data: [] });
@@ -297,7 +294,6 @@ app.get("/api/words/search", async (req, res) => {
       id: item.id,
       word: item.word_name,
       word_name: item.word_name,
-      description: item.description || "", // 新增返回注释
       pinyin_first: getFirstLetter(item.word_name),
       video_url: getFullVideoUrl(item.video_path),
       category_id: item.category_id,
@@ -309,7 +305,7 @@ app.get("/api/words/search", async (req, res) => {
   }
 });
 
-// 删除视频 (【优化】同时删除服务器上的物理视频文件，防止磁盘占满)
+// 删除视频 (同时删除物理文件)
 app.get("/api/video/del", async (req, res) => {
   const { id } = req.query;
   try {
@@ -361,7 +357,7 @@ app.get("/api/admin/feedback/deal", async (req, res) => {
   }
 });
 
-// 【新增】获取用户列表 (用于前端用户管理页面)
+// 获取用户列表
 app.get("/api/admin/users", async (req, res) => {
   try {
     const result = await db.query("SELECT id, username, created_at FROM users ORDER BY id DESC");
@@ -382,7 +378,7 @@ app.post("/api/favorite", async (req, res) => {
   }
 });
 
-// 获取收藏列表 (【修复】补充返回 description 字段)
+// 获取收藏列表
 app.get("/api/favorites", async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM videos WHERE is_favorite = true ORDER BY id DESC");
@@ -390,7 +386,6 @@ app.get("/api/favorites", async (req, res) => {
       id: item.id,
       word: item.word_name,
       word_name: item.word_name,
-      description: item.description || "", // 新增返回注释
       pinyin: item.pinyin || "",
       pinyin_first: getFirstLetter(item.word_name),
       video_url: getFullVideoUrl(item.video_path),
@@ -408,5 +403,5 @@ app.get("/api/favorites", async (req, res) => {
 // 启动服务
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`服务器启动成功，端口：${PORT} - server.js:411`);
+  console.log(`服务器启动成功，端口：${PORT} - server.js:406`);
 });
