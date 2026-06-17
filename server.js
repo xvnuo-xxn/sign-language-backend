@@ -114,6 +114,17 @@ async function initDatabase() {
       )
     `);
 
+    // 兼容旧表：添加缺失的字段
+    try {
+      await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS openid VARCHAR(100) UNIQUE`);
+    } catch (e) {}
+    try {
+      await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS nickName VARCHAR(100)`);
+    } catch (e) {}
+    try {
+      await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatarUrl VARCHAR(500)`);
+    } catch (e) {}
+
     const adminResult = await db.query("SELECT COUNT(*) FROM admin");
     if (parseInt(adminResult.rows[0].count) === 0) {
       await db.query("INSERT INTO admin (account, pwd) VALUES ('admin', 'admin123')");
@@ -135,9 +146,9 @@ async function initDatabase() {
       `);
     }
 
-    console.log("数据库表初始化完成 - server.js:138");
+    console.log("数据库表初始化完成 - server.js:149");
   } catch (err) {
-    console.error("数据库初始化失败: - server.js:140", err.message);
+    console.error("数据库初始化失败: - server.js:151", err.message);
   }
 }
 
@@ -463,5 +474,5 @@ app.get("/api/favorites", async (req, res) => {
 // 启动服务
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`服务器启动成功，端口：${PORT} - server.js:466`);
+  console.log(`服务器启动成功，端口：${PORT} - server.js:477`);
 });
