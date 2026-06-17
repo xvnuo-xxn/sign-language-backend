@@ -145,22 +145,36 @@ initDatabase();
 
 // 静态资源
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/uploads/avatar", express.static(path.join(__dirname, "uploads", "avatar")));
 app.use(express.static("public"));
 
 // 创建上传目录
 if (!fs.existsSync("uploads/video")) {
   fs.mkdirSync("uploads/video", { recursive: true });
 }
+if (!fs.existsSync("uploads/avatar")) {
+  fs.mkdirSync("uploads/avatar", { recursive: true });
+}
 
-// 文件上传
-const storage = multer.diskStorage({
+// 视频上传配置
+const videoStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/video"),
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
   },
 });
-const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
+const upload = multer({ storage: videoStorage, limits: { fileSize: 100 * 1024 * 1024 } });
+
+// 头像上传配置
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/avatar"),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "avatar-" + uniqueSuffix + path.extname(file.originalname));
+  },
+});
+const uploadAvatar = multer({ storage: avatarStorage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // 根路由
 app.get("/", (req, res) => {
@@ -360,6 +374,15 @@ app.get("/api/video/edit", async (req, res) => {
   }
 });
 
+// 头像上传接口
+app.post("/api/upload-avatar", uploadAvatar.single("avatar"), (req, res) => {
+  if (!req.file) {
+    return res.json({ code: 400, msg: "未选择图片" });
+  }
+  const url = `${BASE_URL}/uploads/avatar/${req.file.filename}`;
+  res.json({ code: 200, msg: "上传成功", url: url });
+});
+
 // 管理员获取用户列表
 app.get("/api/admin/users", async (req, res) => {
   try {
@@ -440,5 +463,5 @@ app.get("/api/favorites", async (req, res) => {
 // 启动服务
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`服务器启动成功，端口：${PORT} - server.js:443`);
+  console.log(`服务器启动成功，端口：${PORT} - server.js:466`);
 });
