@@ -72,7 +72,6 @@ async function initDatabase() {
       )
     `);
 
-    // 保留 description 字段以兼容旧数据库，但业务逻辑中不再使用
     await db.query(`
       CREATE TABLE IF NOT EXISTS videos (
         id SERIAL PRIMARY KEY,
@@ -108,8 +107,9 @@ async function initDatabase() {
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        username VARCHAR(255),
-        password VARCHAR(255),
+        openid VARCHAR(100) UNIQUE,
+        nickName VARCHAR(100),
+        avatarUrl VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -179,6 +179,41 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+// 用户登录（微信授权）
+app.post("/api/user/login", async (req, res) => {
+  const { openid, nickName, avatarUrl } = req.body;
+  try {
+    const check = await db.query("SELECT * FROM users WHERE openid = $1", [openid]);
+    if (check.rows.length > 0) {
+      await db.query("UPDATE users SET nickName=$1, avatarUrl=$2 WHERE openid=$3", [nickName, avatarUrl, openid]);
+      res.json({ code: 200, msg: "登录成功", data: check.rows[0] });
+    } else {
+      const result = await db.query(
+        "INSERT INTO users (openid, nickName, avatarUrl) VALUES ($1, $2, $3) RETURNING *",
+        [openid, nickName, avatarUrl]
+      );
+      res.json({ code: 200, msg: "注册成功", data: result.rows[0] });
+    }
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 获取用户信息
+app.get("/api/user/info", async (req, res) => {
+  const { openid } = req.query;
+  try {
+    const result = await db.query("SELECT * FROM users WHERE openid = $1", [openid]);
+    if (result.rows.length > 0) {
+      res.json({ code: 200, data: result.rows[0] });
+    } else {
+      res.json({ code: 404, msg: "用户不存在" });
+    }
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
 // 分类列表
 app.get("/api/category/list", async (req, res) => {
   try {
@@ -213,24 +248,19 @@ app.get("/api/category/del", async (req, res) => {
   }
 });
 
-// 上传视频 (移除了 description 处理)
+// 上传视频
 app.post("/api/upload-video", upload.single("video"), async (req, res) => {
-  const { category_id, word_name } = req.body;
-  if (!req.file) return res.json({ code: 400, msg: "未选择视频文件" });
-  if (!category_id) return res.json({ code: 400, msg: "未选择分类" });
-  if (!word_name || word_name.trim() === "") return res.json({ code: 400, msg: "词汇名称不能为空" });
-  
+  const { category_id, word_name, description } = req.body;
   const video_path = "uploads/video/" + req.file.filename;
   try {
     await db.query(
-      "INSERT INTO videos (category_id, word_name, video_path) VALUES ($1, $2, $3)",
-      [category_id, word_name.trim(), video_path]
+      "INSERT INTO videos (category_id, word_name, video_path, description) VALUES ($1, $2, $3, $4)",
+      [category_id, word_name, video_path, description || ""]
     );
     res.json({ code: 200, msg: "上传成功" });
   } catch (err) {
     console.error(err);
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.json({ code: 500, msg: "数据库写入失败：" + err.message });
+    res.json({ code: 500, msg: "数据库写入失败" });
   }
 });
 
@@ -305,19 +335,36 @@ app.get("/api/words/search", async (req, res) => {
   }
 });
 
-// 删除视频 (同时删除物理文件)
+// 删除视频
 app.get("/api/video/del", async (req, res) => {
   const { id } = req.query;
   try {
-    const result = await db.query("SELECT video_path FROM videos WHERE id = $1", [id]);
-    if (result.rows.length > 0 && result.rows[0].video_path) {
-      const filePath = path.join(__dirname, result.rows[0].video_path);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-    }
     await db.query("DELETE FROM videos WHERE id = $1", [id]);
     res.json({ code: 200, msg: "删除成功" });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 编辑视频信息
+app.get("/api/video/edit", async (req, res) => {
+  const { id, word_name, description } = req.query;
+  try {
+    await db.query(
+      "UPDATE videos SET word_name=$1, description=$2 WHERE id=$3",
+      [word_name, description || "", id]
+    );
+    res.json({ code: 200, msg: "修改成功" });
+  } catch (err) {
+    res.json({ code: 500, msg: err.message });
+  }
+});
+
+// 管理员获取用户列表
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    const result = await db.query("SELECT id, openid, nickName, avatarUrl, created_at FROM users ORDER BY id DESC");
+    res.json({ code: 200, data: result.rows });
   } catch (err) {
     res.json({ code: 500, msg: err.message });
   }
@@ -352,16 +399,6 @@ app.get("/api/admin/feedback/deal", async (req, res) => {
   try {
     await db.query("UPDATE feedback SET status = 1 WHERE id = $1", [id]);
     res.json({ code: 200, msg: "已处理" });
-  } catch (err) {
-    res.json({ code: 500, msg: err.message });
-  }
-});
-
-// 获取用户列表
-app.get("/api/admin/users", async (req, res) => {
-  try {
-    const result = await db.query("SELECT id, username, created_at FROM users ORDER BY id DESC");
-    res.json({ code: 200, data: result.rows });
   } catch (err) {
     res.json({ code: 500, msg: err.message });
   }
@@ -403,5 +440,5 @@ app.get("/api/favorites", async (req, res) => {
 // 启动服务
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`服务器启动成功，端口：${PORT} - server.js:406`);
+  console.log(`服务器启动成功，端口：${PORT} - server.js:443`);
 });
